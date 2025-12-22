@@ -11,6 +11,17 @@ export interface User {
   created_date: string;
 }
 
+// Master table types
+export interface IndustryMaster {
+  industry_id: number;
+  industry_name: string;
+}
+
+export interface LeadSourceMaster {
+  source_id: number;
+  source_name: string;
+}
+
 // Account types
 export type AccountStatus = 'Prospect' | 'Active' | 'Dormant';
 
@@ -20,6 +31,7 @@ export interface Account {
   industry: string;
   head_office: string;
   location: string;
+  company_website: string;
   primary_contact_name: string;
   contact_person_role: string;
   contact_phone: string;
@@ -37,7 +49,7 @@ export interface Account {
 }
 
 // Lead types
-export type LeadSource = 'Website' | 'LinkedIn' | 'Intern' | 'Employee' | 'Referral';
+export type LeadSource = string;
 
 export interface LeadStage {
   stage_id: number;
@@ -94,4 +106,20 @@ export interface AuthContextType {
   currentUser: User | null;
   setCurrentUser: (user: User | null) => void;
   hasPermission: (action: string, resource: string) => boolean;
+  login: (credentials: any) => Promise<boolean>;
+  logout: () => void;
+}
+
+export interface LeadListItem {
+  lead_id: number;
+  lead_date: string;
+  account_name: string;
+  generated_by: string;
+  de_assigned_to_name?: string;
+  de_assigned_to?: number;
+  lead_source: string;
+  stage_name: string;
+  stage_id: number;
+  status_name: string;
+  status_id: number;
 }

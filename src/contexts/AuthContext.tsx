@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { User, AuthContextType, UserRole } from '@/types';
 import { mockUsers } from '@/lib/mockData';
+import { api } from '@/lib/api';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -43,19 +44,53 @@ const permissions: Record<UserRole, Record<string, string[]>> = {
   },
 };
 
+// Removed local AuthContextType definition as it is now imported
+
+
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Default to Admin user for demo
-  const [currentUser, setCurrentUser] = useState<User | null>(mockUsers[0]);
+  // Initialize from localStorage if available
+  // BYPASS: Auto-login as Admin
+  // BYPASS: Auto-login as Admin (Restored per user request)
+  const [currentUser, setCurrentUser] = useState<User | null>({
+    user_id: 1,
+    full_name: 'Admin User',
+    email: 'admin@workbooster.com',
+    role: 'Admin',
+    status: 'Active'
+  } as any);
+
+  const login = async (credentials: any) => {
+    try {
+      const response = await api.login(credentials);
+      if (response.success && response.user) {
+        setCurrentUser(response.user);
+        localStorage.setItem('wb_user', JSON.stringify(response.user));
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Login failed', error);
+      return false;
+    }
+  };
+
+  const logout = () => {
+    setCurrentUser(null);
+    localStorage.removeItem('wb_user');
+  };
 
   const hasPermission = (action: string, resource: string): boolean => {
     if (!currentUser) return false;
-    const rolePermissions = permissions[currentUser.role];
+    // Handle user with role that might not be in permissions object yet (fallback)
+    const userRole = currentUser.role || 'Intern';
+    const rolePermissions = permissions[userRole] || permissions['Intern'];
     const resourcePermissions = rolePermissions[resource];
     return resourcePermissions?.includes(action) || false;
   };
 
   return (
-    <AuthContext.Provider value={{ currentUser, setCurrentUser, hasPermission }}>
+    <AuthContext.Provider value={{ currentUser, setCurrentUser, hasPermission, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

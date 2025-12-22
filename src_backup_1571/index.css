@@ -1,0 +1,213 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Background & Surface */
+    --background: 210 20% 98%;
+    --foreground: 220 20% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 10%;
+
+    /* Electric Blue Primary */
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary - Slate */
+    --secondary: 214 32% 91%;
+    --secondary-foreground: 220 20% 20%;
+
+    /* Muted */
+    --muted: 210 20% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    /* Accent - Light blue */
+    --accent: 210 100% 96%;
+    --accent-foreground: 217 91% 50%;
+
+    /* Destructive */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Success */
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+
+    /* Warning */
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    /* Borders & Inputs */
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 217 91% 60%;
+
+    --radius: 0.375rem;
+
+    /* Sidebar - Darker slate */
+    --sidebar-background: 220 20% 14%;
+    --sidebar-foreground: 210 20% 90%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 20% 20%;
+    --sidebar-accent-foreground: 210 20% 95%;
+    --sidebar-border: 220 20% 22%;
+    --sidebar-ring: 217 91% 60%;
+
+    /* Chart colors */
+    --chart-1: 217 91% 60%;
+    --chart-2: 142 71% 45%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 0 84% 60%;
+
+    /* Stage colors */
+    --stage-new: 217 91% 60%;
+    --stage-contacted: 199 89% 48%;
+    --stage-qualified: 142 71% 45%;
+    --stage-proposal: 280 65% 60%;
+    --stage-negotiation: 38 92% 50%;
+    --stage-won: 142 71% 45%;
+    --stage-lost: 0 84% 60%;
+  }
+
+  .dark {
+    --background: 220 20% 10%;
+    --foreground: 210 20% 98%;
+
+    --card: 220 20% 14%;
+    --card-foreground: 210 20% 98%;
+
+    --popover: 220 20% 14%;
+    --popover-foreground: 210 20% 98%;
+
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 20% 22%;
+    --secondary-foreground: 210 20% 90%;
+
+    --muted: 220 20% 18%;
+    --muted-foreground: 215 16% 60%;
+
+    --accent: 217 91% 20%;
+    --accent-foreground: 217 91% 70%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 20% 22%;
+    --input: 220 20% 22%;
+    --ring: 217 91% 60%;
+
+    --sidebar-background: 220 20% 8%;
+    --sidebar-foreground: 210 20% 90%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 20% 14%;
+    --sidebar-accent-foreground: 210 20% 95%;
+    --sidebar-border: 220 20% 16%;
+    --sidebar-ring: 217 91% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  /* Compact table styles */
+  .compact-table th,
+  .compact-table td {
+    @apply py-2 px-3 text-sm;
+  }
+
+  .compact-table th {
+    @apply font-medium text-muted-foreground;
+  }
+
+  /* Compact form styles */
+  .compact-form label {
+    @apply text-xs font-medium text-muted-foreground mb-1;
+  }
+
+  .compact-form input,
+  .compact-form select,
+  .compact-form textarea {
+    @apply h-8 text-sm;
+  }
+
+  /* Small button utilities */
+  .btn-compact {
+    @apply h-7 px-2.5 text-xs;
+  }
+
+  /* Status badge utilities */
+  .status-active {
+    @apply bg-success/10 text-success;
+  }
+
+  .status-prospect {
+    @apply bg-primary/10 text-primary;
+  }
+
+  .status-dormant {
+    @apply bg-muted text-muted-foreground;
+  }
+}
+
+@layer utilities {
+  /* Animations */
+  .animate-fade-in {
+    animation: fadeIn 0.2s ease-out;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.2s ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.15s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  /* Scrollbar styling */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    @apply bg-muted/50 rounded;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-border rounded hover:bg-muted-foreground/30;
+  }
+}

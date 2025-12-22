@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Plus, Pencil, Trash2, Eye, MoreHorizontal } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataTable, Column } from '@/components/common/DataTable';
@@ -25,16 +25,17 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { Account, AccountStatus } from '@/types';
-import { mockAccounts, mockUsers } from '@/lib/mockData';
+import { mockUsers } from '@/lib/mockData';
 import { formatCurrency, formatDate } from '@/lib/formatters';
+import { api } from '@/lib/api';
 
-const industries = ['Technology', 'Finance', 'Healthcare', 'Retail', 'Education', 'Manufacturing'];
+const industries = ['Technology', 'Finance', 'Healthcare', 'Retail', 'Education', 'Manufacturing', 'Real Estate', 'Logistics', 'Other'];
 const statuses: AccountStatus[] = ['Prospect', 'Active', 'Dormant'];
 
 export default function Accounts() {
   const { toast } = useToast();
   const { hasPermission } = useAuth();
-  const [accounts, setAccounts] = useState<Account[]>(mockAccounts);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -44,25 +45,48 @@ export default function Accounts() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [formData, setFormData] = useState<Partial<Account>>({});
+  const [users, setUsers] = useState<any[]>(mockUsers);
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      const [accountsData, usersData] = await Promise.all([
+        api.getAllAccounts(),
+        api.getUsers()
+      ]);
+      setAccounts(accountsData);
+      setUsers(usersData);
+    } catch (error) {
+      console.error('Failed to fetch data:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load accounts',
+        variant: 'destructive'
+      });
+    }
+  };
 
   const limit = 10;
 
   const filteredData = useMemo(() => {
     let result = [...accounts];
-    
+
     if (search) {
       const q = search.toLowerCase();
-      result = result.filter(a => 
+      result = result.filter(a =>
         a.account_name.toLowerCase().includes(q) ||
         a.industry.toLowerCase().includes(q) ||
         a.location.toLowerCase().includes(q)
       );
     }
-    
+
     if (statusFilter !== 'all') {
       result = result.filter(a => a.account_status === statusFilter);
     }
-    
+
     result.sort((a, b) => {
       const aVal = a[sortKey as keyof Account];
       const bVal = b[sortKey as keyof Account];
@@ -72,7 +96,7 @@ export default function Accounts() {
       }
       return ((aVal as number) - (bVal as number)) * modifier;
     });
-    
+
     return result;
   }, [accounts, search, statusFilter, sortKey, sortDirection]);
 
@@ -80,35 +104,35 @@ export default function Accounts() {
 
   const columns: Column<Account>[] = [
     { key: 'account_id', header: 'ID', className: 'w-16' },
-    { 
-      key: 'account_name', 
-      header: 'Account Name', 
+    {
+      key: 'account_name',
+      header: 'Account Name',
       sortable: true,
       render: (row) => <span className="font-medium">{row.account_name}</span>
     },
     { key: 'industry', header: 'Industry', sortable: true },
     { key: 'location', header: 'Location' },
     { key: 'company_phone', header: 'Phone' },
-    { 
-      key: 'account_owner', 
+    {
+      key: 'account_owner',
       header: 'Owner',
-      render: (row) => mockUsers.find(u => u.user_id === row.account_owner)?.full_name || '-'
+      render: (row) => users.find(u => u.user_id === row.account_owner)?.full_name || '-'
     },
-    { 
-      key: 'account_status', 
+    {
+      key: 'account_status',
       header: 'Status',
       render: (row) => <StatusBadge status={row.account_status} type="account" />
     },
-    { 
-      key: 'total_revenue', 
-      header: 'Revenue', 
+    {
+      key: 'total_revenue',
+      header: 'Revenue',
       sortable: true,
       render: (row) => formatCurrency(row.total_revenue),
       className: 'text-right'
     },
-    { 
-      key: 'last_updated', 
-      header: 'Updated', 
+    {
+      key: 'last_updated',
+      header: 'Updated',
       sortable: true,
       render: (row) => formatDate(row.last_updated)
     },
@@ -135,8 +159,8 @@ export default function Accounts() {
               View Leads
             </DropdownMenuItem>
             {hasPermission('delete', 'accounts') && (
-              <DropdownMenuItem 
-                onClick={() => handleDelete(row)} 
+              <DropdownMenuItem
+                onClick={() => handleDelete(row)}
                 className="text-xs text-destructive"
               >
                 <Trash2 className="h-3.5 w-3.5 mr-2" />
@@ -162,7 +186,7 @@ export default function Accounts() {
       contact_email: '',
       company_phone: '',
       account_status: 'Prospect',
-      account_owner: mockUsers[0].user_id,
+      account_owner: users[0]?.user_id || 1,
       lead_source: '',
       remarks: '',
     });
@@ -174,39 +198,46 @@ export default function Accounts() {
     setDeleteDialogOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.account_name) {
       toast({ title: 'Error', description: 'Account name is required', variant: 'destructive' });
       return;
     }
 
-    if (selectedAccount) {
-      setAccounts(accounts.map(a => 
-        a.account_id === selectedAccount.account_id 
-          ? { ...a, ...formData, last_updated: new Date().toISOString() } 
-          : a
-      ));
-      toast({ title: 'Account updated' });
-    } else {
-      const newAccount: Account = {
-        ...formData as Account,
-        account_id: Math.max(...accounts.map(a => a.account_id)) + 1,
-        total_meetings_conducted: 0,
-        total_pocs: 0,
-        total_revenue: 0,
-        created_date: new Date().toISOString(),
-        last_updated: new Date().toISOString(),
-      };
-      setAccounts([...accounts, newAccount]);
-      toast({ title: 'Account created' });
+    try {
+      if (selectedAccount) {
+        await api.updateAccount(selectedAccount.account_id, formData);
+        toast({ title: 'Account updated' });
+      } else {
+        await api.createAccount(formData);
+        toast({ title: 'Account created' });
+      }
+      setEditModalOpen(false);
+      fetchData();
+    } catch (err: any) {
+      console.error('Save account error:', err);
+      toast({
+        title: 'Error',
+        description: err.message || 'Failed to save account',
+        variant: 'destructive'
+      });
     }
-    setEditModalOpen(false);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (selectedAccount) {
-      setAccounts(accounts.filter(a => a.account_id !== selectedAccount.account_id));
-      toast({ title: 'Account deleted' });
+      try {
+        await api.deleteAccount(selectedAccount.account_id);
+        toast({ title: 'Account deleted' });
+        fetchData();
+      } catch (err: any) {
+        console.error('Delete account error:', err);
+        toast({
+          title: 'Error',
+          description: err.message || 'Failed to delete account',
+          variant: 'destructive'
+        });
+      }
     }
     setDeleteDialogOpen(false);
   };
@@ -223,7 +254,7 @@ export default function Accounts() {
         a.total_revenue
       ].join(','))
     ].join('\n');
-    
+
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -289,16 +320,16 @@ export default function Accounts() {
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <Label className="text-xs">Account Name *</Label>
-              <Input 
-                value={formData.account_name || ''} 
+              <Input
+                value={formData.account_name || ''}
                 onChange={e => setFormData({ ...formData, account_name: e.target.value })}
                 className="h-8 text-sm mt-1"
               />
             </div>
             <div>
               <Label className="text-xs">Industry</Label>
-              <Select 
-                value={formData.industry || ''} 
+              <Select
+                value={formData.industry || ''}
                 onValueChange={v => setFormData({ ...formData, industry: v })}
               >
                 <SelectTrigger className="h-8 text-sm mt-1">
@@ -313,8 +344,8 @@ export default function Accounts() {
             </div>
             <div>
               <Label className="text-xs">Status</Label>
-              <Select 
-                value={formData.account_status || 'Prospect'} 
+              <Select
+                value={formData.account_status || 'Prospect'}
                 onValueChange={v => setFormData({ ...formData, account_status: v as AccountStatus })}
               >
                 <SelectTrigger className="h-8 text-sm mt-1">
@@ -329,72 +360,72 @@ export default function Accounts() {
             </div>
             <div>
               <Label className="text-xs">Head Office</Label>
-              <Input 
-                value={formData.head_office || ''} 
+              <Input
+                value={formData.head_office || ''}
                 onChange={e => setFormData({ ...formData, head_office: e.target.value })}
                 className="h-8 text-sm mt-1"
               />
             </div>
             <div>
               <Label className="text-xs">Location</Label>
-              <Input 
-                value={formData.location || ''} 
+              <Input
+                value={formData.location || ''}
                 onChange={e => setFormData({ ...formData, location: e.target.value })}
                 className="h-8 text-sm mt-1"
               />
             </div>
             <div>
               <Label className="text-xs">Primary Contact</Label>
-              <Input 
-                value={formData.primary_contact_name || ''} 
+              <Input
+                value={formData.primary_contact_name || ''}
                 onChange={e => setFormData({ ...formData, primary_contact_name: e.target.value })}
                 className="h-8 text-sm mt-1"
               />
             </div>
             <div>
               <Label className="text-xs">Contact Role</Label>
-              <Input 
-                value={formData.contact_person_role || ''} 
+              <Input
+                value={formData.contact_person_role || ''}
                 onChange={e => setFormData({ ...formData, contact_person_role: e.target.value })}
                 className="h-8 text-sm mt-1"
               />
             </div>
             <div>
               <Label className="text-xs">Contact Phone</Label>
-              <Input 
-                value={formData.contact_phone || ''} 
+              <Input
+                value={formData.contact_phone || ''}
                 onChange={e => setFormData({ ...formData, contact_phone: e.target.value })}
                 className="h-8 text-sm mt-1"
               />
             </div>
             <div>
               <Label className="text-xs">Contact Email</Label>
-              <Input 
+              <Input
                 type="email"
-                value={formData.contact_email || ''} 
+                value={formData.contact_email || ''}
                 onChange={e => setFormData({ ...formData, contact_email: e.target.value })}
                 className="h-8 text-sm mt-1"
               />
             </div>
             <div>
               <Label className="text-xs">Company Phone</Label>
-              <Input 
-                value={formData.company_phone || ''} 
+              <Input
+                value={formData.company_phone || ''}
                 onChange={e => setFormData({ ...formData, company_phone: e.target.value })}
                 className="h-8 text-sm mt-1"
               />
             </div>
             <div>
               <Label className="text-xs">Account Owner</Label>
-              <Select 
-                value={String(formData.account_owner || '')} 
+              <Select
+                value={String(formData.account_owner || '')}
                 onValueChange={v => setFormData({ ...formData, account_owner: Number(v) })}
               >
                 <SelectTrigger className="h-8 text-sm mt-1">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {mockUsers.filter(u => ['BD', 'Sales', 'Admin'].includes(u.role)).map(u => (
+                  {users.filter(u => ['BD', 'Sales', 'Admin'].includes(u.role)).map(u => (
                     <SelectItem key={u.user_id} value={String(u.user_id)}>{u.full_name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -402,8 +433,8 @@ export default function Accounts() {
             </div>
             <div className="col-span-2">
               <Label className="text-xs">Remarks</Label>
-              <Textarea 
-                value={formData.remarks || ''} 
+              <Textarea
+                value={formData.remarks || ''}
                 onChange={e => setFormData({ ...formData, remarks: e.target.value })}
                 className="text-sm mt-1 h-16 resize-none"
               />

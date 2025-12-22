@@ -237,19 +237,50 @@
   }
 
   /* Ensure select content is visible */
+  [data-radix-select-content] {
+    background-color: hsl(var(--popover)) !important;
+    color: hsl(var(--popover-foreground)) !important;
+    border: 1px solid hsl(var(--border)) !important;
+  }
+
   [role="listbox"] {
     background-color: hsl(var(--popover)) !important;
     color: hsl(var(--popover-foreground)) !important;
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  /* Ensure select viewport is visible */
+  [data-radix-select-viewport] {
+    display: block !important;
+    visibility: visible !important;
   }
 
   /* Ensure select items are visible */
   [role="option"] {
-    background-color: transparent;
+    background-color: transparent !important;
+    color: hsl(var(--popover-foreground)) !important;
+    display: flex !important;
+    visibility: visible !important;
+    padding: 0.375rem 2rem 0.375rem 0.5rem !important;
+    cursor: pointer !important;
   }
 
   [role="option"]:hover,
   [role="option"][data-highlighted] {
     background-color: hsl(var(--accent)) !important;
     color: hsl(var(--accent-foreground)) !important;
+  }
+
+  [role="option"][data-state="checked"] {
+    background-color: hsl(var(--accent)) !important;
+    color: hsl(var(--accent-foreground)) !important;
+  }
+
+  /* Ensure select item text is visible */
+  [data-radix-select-item-text] {
+    color: inherit !important;
+    display: inline !important;
+    visibility: visible !important;
   }
 }
