@@ -172,6 +172,10 @@ export function LeadsTemplate({
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [selectedLead, setSelectedLead] = useState<LeadListItem | null>(null);
     const [formData, setFormData] = useState<LeadFormData>({});
+    const [validationErrors, setValidationErrors] = useState<{
+        account_name?: string;
+        company_website?: string;
+    }>({});
 
     // Master data state
     const [industries, setIndustries] = useState<any[]>(mockIndustryMaster);
@@ -693,6 +697,7 @@ export function LeadsTemplate({
                 stage_id: stages[0]?.stage_id || 1,
                 status_id: statuses.find(s => s.stage_id === (stages[0]?.stage_id || 1))?.status_id || 1,
             });
+            setValidationErrors({});
             setEditModalOpen(true);
         }
     };
@@ -703,8 +708,39 @@ export function LeadsTemplate({
     };
 
     const handleSave = async () => {
-        if (!formData.account_name || !formData.stage_id || !formData.status_id) {
-            toast({ title: 'Error', description: 'Account name, stage, and status are required', variant: 'destructive' });
+        // Validate mandatory fields
+        const errors: { account_name?: string; company_website?: string } = {};
+
+        if (!formData.account_name || !formData.account_name.trim()) {
+            errors.account_name = 'Account Name is required';
+        }
+
+        if (!formData.company_website || !formData.company_website.trim()) {
+            errors.company_website = 'Company Website is required';
+        }
+
+        if (!formData.stage_id || !formData.status_id) {
+            toast({ title: 'Error', description: 'Stage and status are required', variant: 'destructive' });
+            return;
+        }
+
+        // Check for existing validation errors (from duplicate check)
+        if (validationErrors.account_name || validationErrors.company_website) {
+            toast({
+                title: 'Validation Error',
+                description: validationErrors.account_name || validationErrors.company_website,
+                variant: 'destructive'
+            });
+            return;
+        }
+
+        if (errors.account_name || errors.company_website) {
+            setValidationErrors(errors);
+            toast({
+                title: 'Error',
+                description: errors.account_name || errors.company_website,
+                variant: 'destructive'
+            });
             return;
         }
 
@@ -737,16 +773,26 @@ export function LeadsTemplate({
                     fetchLeads();
                     toast({ title: 'Lead created successfully' });
                 }
-            } catch (error) {
+            } catch (error: any) {
                 console.error('Error creating lead:', error);
+                // Check if it's a duplicate error from the backend
+                const errorMessage = error.message || 'Unknown error';
+                if (errorMessage.includes('already exists')) {
+                    if (errorMessage.toLowerCase().includes('account')) {
+                        setValidationErrors(prev => ({ ...prev, account_name: errorMessage }));
+                    } else if (errorMessage.toLowerCase().includes('website')) {
+                        setValidationErrors(prev => ({ ...prev, company_website: errorMessage }));
+                    }
+                }
                 toast({
                     title: 'Error creating lead',
-                    description: error instanceof Error ? error.message : 'Unknown error',
+                    description: errorMessage,
                     variant: 'destructive'
                 });
                 return; // Don't close modal on error
             }
         }
+        setValidationErrors({});
         setEditModalOpen(false);
     };
 
@@ -966,9 +1012,34 @@ export function LeadsTemplate({
                                         <Input
                                             id="account_name"
                                             value={formData.account_name || ''}
-                                            onChange={(e) => setFormData({ ...formData, account_name: e.target.value })}
+                                            onChange={(e) => {
+                                                setFormData({ ...formData, account_name: e.target.value });
+                                                if (validationErrors.account_name) {
+                                                    setValidationErrors(prev => ({ ...prev, account_name: undefined }));
+                                                }
+                                            }}
+                                            onBlur={async (e) => {
+                                                const value = e.target.value.trim();
+                                                if (value && !selectedLead) {
+                                                    try {
+                                                        const result = await api.checkDuplicate({ account_name: value });
+                                                        if (result.account_name_exists) {
+                                                            setValidationErrors(prev => ({
+                                                                ...prev,
+                                                                account_name: `Account "${result.existing_account_name}" already exists`
+                                                            }));
+                                                        }
+                                                    } catch (err) {
+                                                        console.error('Duplicate check failed:', err);
+                                                    }
+                                                }
+                                            }}
                                             placeholder="Enter account name"
+                                            className={validationErrors.account_name ? 'border-red-500' : ''}
                                         />
+                                        {validationErrors.account_name && (
+                                            <p className="text-xs text-red-500">{validationErrors.account_name}</p>
+                                        )}
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="industry">Industry</Label>
@@ -1007,13 +1078,38 @@ export function LeadsTemplate({
                                         />
                                     </div>
                                     <div className="col-span-2 space-y-2">
-                                        <Label htmlFor="company_website">Company Website</Label>
+                                        <Label htmlFor="company_website">Company Website <span className="text-red-500">*</span></Label>
                                         <Input
                                             id="company_website"
                                             value={formData.company_website || ''}
-                                            onChange={(e) => setFormData({ ...formData, company_website: e.target.value })}
+                                            onChange={(e) => {
+                                                setFormData({ ...formData, company_website: e.target.value });
+                                                if (validationErrors.company_website) {
+                                                    setValidationErrors(prev => ({ ...prev, company_website: undefined }));
+                                                }
+                                            }}
+                                            onBlur={async (e) => {
+                                                const value = e.target.value.trim();
+                                                if (value && !selectedLead) {
+                                                    try {
+                                                        const result = await api.checkDuplicate({ company_website: value });
+                                                        if (result.company_website_exists) {
+                                                            setValidationErrors(prev => ({
+                                                                ...prev,
+                                                                company_website: `Website already exists for "${result.existing_website_account}"`
+                                                            }));
+                                                        }
+                                                    } catch (err) {
+                                                        console.error('Duplicate check failed:', err);
+                                                    }
+                                                }
+                                            }}
                                             placeholder="https://example.com"
+                                            className={validationErrors.company_website ? 'border-red-500' : ''}
                                         />
+                                        {validationErrors.company_website && (
+                                            <p className="text-xs text-red-500">{validationErrors.company_website}</p>
+                                        )}
                                     </div>
                                 </div>
 

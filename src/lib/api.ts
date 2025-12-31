@@ -62,6 +62,26 @@ export const api = {
         return response.json();
     },
 
+    async checkDuplicate(params: {
+        account_name?: string;
+        company_website?: string;
+        exclude_account_id?: number
+    }): Promise<{
+        account_name_exists: boolean;
+        company_website_exists: boolean;
+        existing_account_name: string | null;
+        existing_website_account: string | null;
+    }> {
+        const queryParams = new URLSearchParams();
+        if (params.account_name) queryParams.set('account_name', params.account_name);
+        if (params.company_website) queryParams.set('company_website', params.company_website);
+        if (params.exclude_account_id) queryParams.set('exclude_account_id', params.exclude_account_id.toString());
+
+        const response = await fetch(`${API_BASE_URL}/accounts/check-duplicate?${queryParams.toString()}`);
+        if (!response.ok) throw new Error('Failed to check for duplicates');
+        return response.json();
+    },
+
     async getAllAccounts(): Promise<any[]> {
         const response = await fetch(`${API_BASE_URL}/accounts`);
         if (!response.ok) throw new Error('Failed to fetch all accounts');

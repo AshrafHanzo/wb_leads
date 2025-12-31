@@ -224,6 +224,59 @@ app.get('/api/leads/statuses', async (req, res) => {
     }
 });
 
+// Check for duplicate account_name or company_website
+app.get('/api/accounts/check-duplicate', async (req, res) => {
+    try {
+        const { account_name, company_website, exclude_account_id } = req.query;
+
+        const result = {
+            account_name_exists: false,
+            company_website_exists: false,
+            existing_account_name: null,
+            existing_website_account: null
+        };
+
+        // Check account_name duplicate
+        if (account_name && account_name.trim()) {
+            let nameQuery = 'SELECT account_id, account_name FROM accounts WHERE LOWER(account_name) = LOWER($1)';
+            const nameParams = [account_name.trim()];
+
+            if (exclude_account_id) {
+                nameQuery += ' AND account_id != $2';
+                nameParams.push(exclude_account_id);
+            }
+
+            const nameCheck = await pool.query(nameQuery, nameParams);
+            if (nameCheck.rows.length > 0) {
+                result.account_name_exists = true;
+                result.existing_account_name = nameCheck.rows[0].account_name;
+            }
+        }
+
+        // Check company_website duplicate
+        if (company_website && company_website.trim()) {
+            let websiteQuery = 'SELECT account_id, account_name, company_website FROM accounts WHERE LOWER(company_website) = LOWER($1)';
+            const websiteParams = [company_website.trim()];
+
+            if (exclude_account_id) {
+                websiteQuery += ' AND account_id != $2';
+                websiteParams.push(exclude_account_id);
+            }
+
+            const websiteCheck = await pool.query(websiteQuery, websiteParams);
+            if (websiteCheck.rows.length > 0) {
+                result.company_website_exists = true;
+                result.existing_website_account = websiteCheck.rows[0].account_name;
+            }
+        }
+
+        res.json(result);
+    } catch (err) {
+        console.error('Error checking duplicates:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // Get Accounts (Dropdown)
 app.get('/api/leads/accounts', async (req, res) => {
     try {
@@ -1302,7 +1355,7 @@ app.post('/api/leads', async (req, res) => {
         industry,
         head_office,
         location,
-        company_website, // kept for destructuring consistency
+        company_website,
         primary_contact_name,
         contact_person_role,
         contact_phone,
@@ -1314,57 +1367,72 @@ app.post('/api/leads', async (req, res) => {
         status_id
     } = req.body;
 
+    // Validate mandatory fields
+    if (!account_name || !account_name.trim()) {
+        return res.status(400).json({
+            error: 'Account Name is required',
+            field: 'account_name'
+        });
+    }
+
+    if (!company_website || !company_website.trim()) {
+        return res.status(400).json({
+            error: 'Company Website is required',
+            field: 'company_website'
+        });
+    }
+
     const client = await pool.connect();
 
     try {
         await client.query('BEGIN');
 
-        // First, insert or get account
-        // Check if account exists
-        const checkAccount = await client.query(
-            'SELECT account_id FROM accounts WHERE account_name = $1',
-            [account_name]
+        // Check for duplicate account_name
+        const checkAccountName = await client.query(
+            'SELECT account_id, account_name FROM accounts WHERE LOWER(account_name) = LOWER($1)',
+            [account_name.trim()]
         );
 
-        let account_id;
-
-        if (checkAccount.rows.length > 0) {
-            // Update existing account
-            account_id = checkAccount.rows[0].account_id;
-            await client.query(
-                `UPDATE accounts SET
-        industry = $2,
-            head_office = $3,
-            location = $4,
-            primary_contact_name = $5,
-            contact_person_role = $6,
-            contact_phone = $7,
-            contact_email = $8,
-            company_phone = $9,
-            last_updated = NOW()
-                WHERE account_id = $1`,
-                [account_id, industry, head_office, location,
-                    primary_contact_name, contact_person_role, contact_phone,
-                    contact_email, company_phone]
-            );
-        } else {
-            // Insert new account
-            // Fixed VALUES clause to match column count (removed extra $10)
-            const insertAccount = await client.query(
-                `INSERT INTO accounts(
-                account_name, industry, head_office, location,
-                primary_contact_name, contact_person_role, contact_phone,
-                contact_email, company_phone, account_status, created_date, last_updated
-            ) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, 'Prospect', NOW(), NOW())
-                RETURNING account_id`,
-                [account_name, industry, head_office, location,
-                    primary_contact_name, contact_person_role, contact_phone,
-                    contact_email, company_phone]
-            );
-            account_id = insertAccount.rows[0].account_id;
+        if (checkAccountName.rows.length > 0) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                error: `Account "${checkAccountName.rows[0].account_name}" already exists`,
+                field: 'account_name',
+                duplicate: true
+            });
         }
 
-        // Then, insert the lead
+        // Check for duplicate company_website
+        const checkWebsite = await client.query(
+            'SELECT account_id, account_name, company_website FROM accounts WHERE LOWER(company_website) = LOWER($1)',
+            [company_website.trim()]
+        );
+
+        if (checkWebsite.rows.length > 0) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                error: `Website already exists for account "${checkWebsite.rows[0].account_name}"`,
+                field: 'company_website',
+                duplicate: true
+            });
+        }
+
+        // Insert new account with company_website
+        const insertAccount = await client.query(
+            `INSERT INTO accounts(
+                account_name, industry, head_office, location,
+                company_website, primary_contact_name, contact_person_role, 
+                contact_phone, contact_email, company_phone, 
+                account_status, created_date, last_updated
+            ) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Prospect', NOW(), NOW())
+            RETURNING account_id`,
+            [account_name.trim(), industry, head_office, location,
+            company_website.trim(), primary_contact_name, contact_person_role,
+                contact_phone, contact_email, company_phone]
+        );
+        const account_id = insertAccount.rows[0].account_id;
+
+        // Insert the lead
         const leadResult = await client.query(
             `INSERT INTO leads(
                 account_id, lead_date, lead_source, lead_generated_by,
