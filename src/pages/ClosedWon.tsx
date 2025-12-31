@@ -6,6 +6,7 @@ export default function ClosedWon() {
             title="Closed Won"
             description="Successfully closed deals"
             allowedStageIds={[11]}
+            showWonColumns={true}
         />
     );
 }

@@ -20,7 +20,8 @@ import {
   Rocket,
   FileCheck,
   PenLine,
-  Building2
+  Building2,
+  Calendar
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -33,16 +34,18 @@ interface NavItem {
   label: string;
   resource?: string;
   adminOnly?: boolean;
+  allowedRoles?: string[];
   children?: NavItem[];
 }
 
 const navItems: NavItem[] = [
-  { path: '/', icon: LayoutDashboard, label: 'Dashboard', resource: 'leads' },
-  { path: '/accounts', icon: Building2, label: 'Accounts', resource: 'leads' },
+  { path: '/', icon: LayoutDashboard, label: 'Dashboard', resource: 'leads', allowedRoles: ['Admin', 'BD', 'Telecaller', 'Sales'] },
+  { path: '/accounts', icon: Building2, label: 'Accounts', resource: 'leads', allowedRoles: ['Admin', 'BD', 'Sales'] },
   {
     icon: Search,
     label: 'Lead Sourcing',
     resource: 'leads',
+    allowedRoles: ['Admin', 'BD'],
     children: [
       { path: '/sourcing', icon: Search, label: 'New Lead', resource: 'leads' },
       { path: '/data-enrichment', icon: Database, label: 'Data Enrichment', resource: 'leads' },
@@ -53,6 +56,7 @@ const navItems: NavItem[] = [
     icon: Phone,
     label: 'Lead Outreach',
     resource: 'leads',
+    allowedRoles: ['Admin', 'Telecaller'],
     children: [
       { path: '/telecalling', icon: Headphones, label: 'Telecalling', resource: 'leads' },
       { path: '/initial-connect', icon: Phone, label: 'Initial Connect', resource: 'leads' },
@@ -63,6 +67,7 @@ const navItems: NavItem[] = [
     icon: Lightbulb,
     label: 'Lead Discovery',
     resource: 'leads',
+    allowedRoles: ['Admin', 'Telecaller'],
     children: [
       { path: '/discovery', icon: Lightbulb, label: 'Discovery', resource: 'leads' },
       { path: '/poc', icon: FlaskConical, label: 'POC', resource: 'leads' },
@@ -72,15 +77,17 @@ const navItems: NavItem[] = [
     icon: FileSignature,
     label: 'Lead Proposal',
     resource: 'leads',
+    allowedRoles: ['Admin', 'Sales'],
     children: [
       { path: '/proposal-commercials', icon: FileSignature, label: 'Proposal & Commercials', resource: 'leads' },
       { path: '/pilot', icon: Rocket, label: 'Pilot', resource: 'leads' },
     ]
   },
-  { path: '/closed-won', icon: FileCheck, label: 'Closed Won', resource: 'leads' },
-  { path: '/closed-lost', icon: PenLine, label: 'Closed Lost', resource: 'leads' },
-  { path: '/reports', icon: FileText, label: 'Reports', resource: 'leads' },
-  { path: '/settings', icon: Settings, label: 'Settings', resource: 'settings' },
+  { path: '/closed-won', icon: FileCheck, label: 'Closed Won', resource: 'leads', allowedRoles: ['Admin', 'Sales'] },
+  { path: '/closed-lost', icon: PenLine, label: 'Closed Lost', resource: 'leads', allowedRoles: ['Admin', 'Sales'] },
+  { path: '/meetings', icon: Calendar, label: 'Meetings', resource: 'leads', allowedRoles: ['Admin', 'BD', 'Sales', 'Telecaller'] },
+  { path: '/reports', icon: FileText, label: 'Reports', resource: 'leads', allowedRoles: ['Admin'] },
+  { path: '/settings', icon: Settings, label: 'Settings', resource: 'settings', allowedRoles: ['Admin'] },
 ];
 
 export function Sidebar() {
@@ -117,7 +124,16 @@ export function Sidebar() {
   };
 
   const visibleItems = navItems.filter(item => {
-    if (item.adminOnly && currentUser?.role !== 'Admin') return false;
+    // If item has specific roles defined, check if user has one of them
+    if (item.allowedRoles && currentUser) {
+      // Admin always has access (override)
+      if (currentUser.role === 'Admin') return true;
+
+      // Check if user's role is in allowedRoles
+      return item.allowedRoles.includes(currentUser.role);
+    }
+
+    // Fallback to permission-based check if no roles defined
     return hasPermission('view', item.resource || 'leads');
   });
 
@@ -185,10 +201,11 @@ export function Sidebar() {
     >
       {/* Logo */}
       <div className="h-14 flex items-center px-4 border-b border-sidebar-border">
-        <Zap className="h-6 w-6 text-sidebar-primary shrink-0" />
+        {/* <Zap className="h-6 w-6 text-sidebar-primary shrink-0" /> */}
+        <img src="/logo.png" alt="Logo" className="h-8 w-8 object-contain shrink-0" />
         {!collapsed && (
           <span className="ml-2 font-semibold text-sidebar-foreground text-sm">
-            WorkBooster
+            WorkBoosterAI
           </span>
         )}
       </div>

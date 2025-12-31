@@ -6,6 +6,7 @@ export default function ProposalCommercials() {
             title="Proposal & Commercials"
             description="Manage proposals and commercial discussions"
             allowedStageIds={[9]}
+            showProposalColumns={true}
         />
     );
 }

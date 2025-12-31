@@ -50,15 +50,10 @@ const permissions: Record<UserRole, Record<string, string[]>> = {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   // Initialize from localStorage if available
-  // BYPASS: Auto-login as Admin
-  // BYPASS: Auto-login as Admin (Restored per user request)
-  const [currentUser, setCurrentUser] = useState<User | null>({
-    user_id: 1,
-    full_name: 'Admin User',
-    email: 'admin@workbooster.com',
-    role: 'Admin',
-    status: 'Active'
-  } as any);
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem('wb_user');
+    return saved ? JSON.parse(saved) : null;
+  });
 
   const login = async (credentials: any) => {
     try {
@@ -82,9 +77,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const hasPermission = (action: string, resource: string): boolean => {
     if (!currentUser) return false;
-    // Handle user with role that might not be in permissions object yet (fallback)
-    const userRole = currentUser.role || 'Intern';
+
+    // Normalize user role to match permission keys (handle case sensitivity)
+    const userRole = (currentUser.role || 'Intern') as UserRole;
+
+    // Fallback to Intern permissions if role not found
     const rolePermissions = permissions[userRole] || permissions['Intern'];
+
+    // Check if permission exists for the resource
     const resourcePermissions = rolePermissions[resource];
     return resourcePermissions?.includes(action) || false;
   };

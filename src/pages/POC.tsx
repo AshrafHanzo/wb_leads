@@ -6,6 +6,7 @@ export default function POC() {
             title="POC"
             description="Proof of Concept phase"
             allowedStageIds={[8]}
+            showPOCColumns={true}
         />
     );
 }

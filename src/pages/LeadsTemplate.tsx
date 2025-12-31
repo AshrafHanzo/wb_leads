@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Plus,
     Pencil,
@@ -7,14 +8,26 @@ import {
     CalendarPlus,
     MoreHorizontal,
     Filter,
-    Search
+    Search,
+    XCircle,
+    RotateCcw,
+    CheckCircle2,
+    Ban,
+    History
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataTable, Column } from '@/components/common/DataTable';
 import { StatusBadge } from '@/components/common/StatusBadge';
+import { CompactModal } from '@/components/common/CompactModal';
+import { CallLogDrawer } from '@/components/leads/CallLogDrawer';
+import { CallHistoryDrawer } from '@/components/leads/CallHistoryDrawer';
+import { MeetingLogDrawer } from '@/components/leads/MeetingLogDrawer';
+import { MeetingHistoryDrawer } from '@/components/leads/MeetingHistoryDrawer';
+import { StatsCards } from '@/components/leads/StatsCards';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
     Select,
     SelectContent,
@@ -83,16 +96,78 @@ interface LeadsTemplateProps {
     showDEColumn?: boolean;
     hideGeneratedBy?: boolean;
     hideSourceFrom?: boolean;
+    hideStatusColumn?: boolean;
+    hideActions?: boolean;
+    hideEditAction?: boolean;
+    hideDeleteAction?: boolean;
+    showProductSelection?: boolean;
+    // Stage-specific props used by different pages
+    showTelecallingColumns?: boolean;
+    showMeetingColumns?: boolean;
+    meetingType?: string;
+    showPOCColumns?: boolean;
+    showProposalColumns?: boolean;
+    showWonColumns?: boolean;
+    showIndustryFilter?: boolean;
+    showLOBFilter?: boolean;
+    showCityFilter?: boolean;
+    showProductFilter?: boolean;
+    hideStageFilter?: boolean;
+    hideSourceFilter?: boolean;
+    showQuickCallActions?: boolean;
+    showOutcomeFilter?: boolean;
+    showCallStats?: boolean;
 }
 
-export function LeadsTemplate({ title, description, allowedStageIds, showDEColumn, hideGeneratedBy, hideSourceFrom }: LeadsTemplateProps) {
+export function LeadsTemplate({
+    title,
+    description,
+    allowedStageIds,
+    showDEColumn,
+    hideGeneratedBy,
+    hideSourceFrom,
+    hideStatusColumn,
+    hideActions = true,
+    hideEditAction,
+    hideDeleteAction,
+    showProductSelection,
+    showTelecallingColumns,
+    showMeetingColumns,
+    meetingType,
+    showPOCColumns,
+    showProposalColumns,
+    showWonColumns,
+    showIndustryFilter,
+    showLOBFilter,
+    showCityFilter,
+    showProductFilter,
+    hideStageFilter,
+    hideSourceFilter,
+    showQuickCallActions,
+    showOutcomeFilter,
+    showCallStats
+}: LeadsTemplateProps) {
+    const navigate = useNavigate();
     const { toast } = useToast();
     const { hasPermission, currentUser } = useAuth();
+    const [bulkDEAssignedTo, setBulkDEAssignedTo] = useState<string>('');
     const [leads, setLeads] = useState<LeadListItem[]>([]);
+    const [stats, setStats] = useState({ today: 0, yesterday: 0, thisWeek: 0, thisMonth: 0 });
+    const [statsLoading, setStatsLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(1);
     const [search, setSearch] = useState('');
     const [stageFilter, setStageFilter] = useState<string>('all');
     const [sourceFilter, setSourceFilter] = useState<string>('all');
+    const [industryFilter, setIndustryFilter] = useState<string>('all');
+    const [lobFilter, setLobFilter] = useState<string>('all');
+    const [cityFilter, setCityFilter] = useState<string>('all');
+    const [productFilter, setProductFilter] = useState<string>('all');
+    const [outcomeFilter, setOutcomeFilter] = useState<string>('all');
+    const [callLogDrawerOpen, setCallLogDrawerOpen] = useState(false);
+    const [callHistoryDrawerOpen, setCallHistoryDrawerOpen] = useState(false);
+    const [meetingLogDrawerOpen, setMeetingLogDrawerOpen] = useState(false);
+    const [meetingHistoryDrawerOpen, setMeetingHistoryDrawerOpen] = useState(false);
     const [editModalOpen, setEditModalOpen] = useState(false);
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [selectedLead, setSelectedLead] = useState<LeadListItem | null>(null);
@@ -104,8 +179,35 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
     const [users, setUsers] = useState<any[]>(mockUsers);
     const [stages, setStages] = useState<any[]>(mockLeadStages);
     const [statuses, setStatuses] = useState<any[]>(mockLeadStatuses);
+    const [allLobs, setAllLobs] = useState<any[]>([]);
+    const [allCities, setAllCities] = useState<any[]>([]);
+    const [products, setProducts] = useState<any[]>([]);
 
-    // Fetch data from API
+    const fetchLeads = async () => {
+        setLoading(true);
+        try {
+            const data = await api.getLeads();
+            setLeads(data);
+        } catch (error) {
+            toast({ title: 'Error', description: 'Failed to fetch leads', variant: 'destructive' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchStats = async () => {
+        setStatsLoading(true);
+        try {
+            const data = await api.getLeadStats(allowedStageIds);
+            setStats(data);
+        } catch (error) {
+            console.error('Failed to fetch stats:', error);
+        } finally {
+            setStatsLoading(false);
+        }
+    };
+
+    // Fetch master data from API
     useEffect(() => {
         const fetchMasterData = async () => {
             try {
@@ -115,14 +217,18 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
                     usersData,
                     stagesData,
                     statusesData,
-                    leadsData
+                    productsData,
+                    lobsData,
+                    citiesData
                 ] = await Promise.all([
                     api.getIndustries(),
                     api.getLeadSources(),
                     api.getUsers(),
                     api.getStages(),
                     api.getStatuses(),
-                    api.getLeads()
+                    api.getProductsMaster(),
+                    api.getIndustryLOBs(),
+                    api.getCities()
                 ]);
 
                 setIndustries(industriesData);
@@ -133,7 +239,9 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
                 setUsers(usersData);
                 setStages(stagesData);
                 setStatuses(statusesData);
-                setLeads(leadsData);
+                setProducts(productsData);
+                setAllLobs(lobsData);
+                setAllCities(citiesData);
             } catch (error) {
                 console.error('Failed to fetch master data:', error);
                 toast({
@@ -147,6 +255,11 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
         fetchMasterData();
     }, []);
 
+    useEffect(() => {
+        fetchLeads();
+        fetchStats();
+    }, [allowedStageIds]);
+
     console.log('Users in LeadsTemplate:', users);
 
     const limit = 10;
@@ -154,7 +267,7 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
     const filteredData = useMemo(() => {
         let result = [...leads];
 
-        // 1. First, filter by the allowed stages for this page
+        // 1. First, filter by the allowed stages for this page (from page props)
         if (allowedStageIds.length > 0) {
             result = result.filter(lead => allowedStageIds.includes(lead.stage_id));
         }
@@ -165,7 +278,8 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
             result = result.filter(
                 (lead) =>
                     lead.account_name.toLowerCase().includes(searchLower) ||
-                    lead.lead_source.toLowerCase().includes(searchLower)
+                    lead.lead_source.toLowerCase().includes(searchLower) ||
+                    (lead.hq_city || '').toLowerCase().includes(searchLower)
             );
         }
 
@@ -179,8 +293,33 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
             result = result.filter((lead) => lead.lead_source === sourceFilter);
         }
 
+        // 5. Industry filter
+        if (industryFilter !== 'all') {
+            result = result.filter((lead) => lead.industry === industryFilter);
+        }
+
+        // 6. LOB filter
+        if (lobFilter !== 'all') {
+            result = result.filter((lead) => lead.primary_lob === lobFilter);
+        }
+
+        // 7. City filter
+        if (cityFilter !== 'all') {
+            result = result.filter((lead) => lead.hq_city === cityFilter);
+        }
+
+        // 8. Product filter
+        if (productFilter !== 'all') {
+            result = result.filter((lead) => lead.product_mapped === productFilter);
+        }
+
+        // 9. Outcome filter
+        if (outcomeFilter !== 'all') {
+            result = result.filter((lead) => lead.last_call_outcome === outcomeFilter);
+        }
+
         return result;
-    }, [leads, search, stageFilter, sourceFilter, allowedStageIds]);
+    }, [leads, search, stageFilter, sourceFilter, industryFilter, lobFilter, cityFilter, productFilter, outcomeFilter, allowedStageIds]);
 
     const paginatedData = useMemo(() => {
         const startIndex = (page - 1) * limit;
@@ -190,19 +329,47 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
     const totalPages = Math.ceil(filteredData.length / limit);
 
     const columns: Column<LeadListItem>[] = [
-        { key: 'lead_id', header: 'ID', render: (row) => <span className="text-muted-foreground">#{row.lead_id}</span> },
         {
             key: 'lead_date',
             header: 'Date',
             render: (row) => <span>{formatDate(row.lead_date)}</span>
         },
+        ...(!hideGeneratedBy ? [{ key: 'generated_by', header: 'Generated By' }] : []),
         {
             key: 'account_name',
             header: 'Account',
             sortable: true,
-            render: (row) => <span className="font-medium">{row.account_name}</span>
+            render: (row) => (
+                <button
+                    onClick={() => window.open(`/accounts/${row.account_id}`, '_blank')}
+                    className="font-medium text-primary hover:underline text-left text-wrap max-w-[200px] block"
+                >
+                    {row.account_name}
+                </button>
+            )
         },
-        ...(!hideGeneratedBy ? [{ key: 'generated_by', header: 'Generated By' }] : []),
+        { key: 'industry', header: 'Industry' },
+        { key: 'primary_lob', header: 'Main LOB' },
+        { key: 'hq_city', header: 'HQ City' },
+        {
+            key: 'data_completion_score' as keyof LeadListItem,
+            header: 'Data Completion',
+            render: (row: LeadListItem) => (
+                <div className="flex items-center gap-2">
+                    <div className="w-12 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                            className={cn(
+                                "h-full rounded-full transition-all duration-500",
+                                (row.data_completion_score || 0) > 80 ? "bg-green-500" :
+                                    (row.data_completion_score || 0) > 50 ? "bg-amber-500" : "bg-red-500"
+                            )}
+                            style={{ width: `${row.data_completion_score || 0}%` }}
+                        />
+                    </div>
+                    <span className="text-[10px] font-medium text-muted-foreground">{row.data_completion_score || 0}%</span>
+                </div>
+            )
+        },
         ...(showDEColumn ? [{
             key: 'de_assigned_to_name' as keyof LeadListItem,
             header: 'DE assigned to',
@@ -213,8 +380,7 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
                         onValueChange={async (value) => {
                             try {
                                 await api.updateLeadDE(row.lead_id, Number(value));
-                                const updatedLeads = await api.getLeads();
-                                setLeads(updatedLeads);
+                                fetchLeads();
                                 toast({ title: 'Assigned successfully' });
                             } catch (err) {
                                 console.error(err);
@@ -222,7 +388,7 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
                             }
                         }}
                     >
-                        <SelectTrigger className="w-[140px] h-8">
+                        <SelectTrigger className="w-[140px] h-8 text-xs">
                             <SelectValue placeholder="Select..." />
                         </SelectTrigger>
                         <SelectContent>
@@ -234,8 +400,6 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
                 </div>
             )
         }] : []),
-        ...(!hideSourceFrom ? [{ key: 'lead_source', header: 'Source From' }] : []),
-
         {
             key: 'stage_name',
             header: 'Stage Update',
@@ -254,8 +418,7 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
                             });
 
                             // Refresh list
-                            const updatedLeads = await api.getLeads();
-                            setLeads(updatedLeads);
+                            fetchLeads();
                             toast({ title: 'Stage updated' });
                         } catch (err) {
                             console.error('Failed to update stage:', err);
@@ -263,7 +426,7 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
                         }
                     }}
                 >
-                    <SelectTrigger className="h-8 w-[250px]">
+                    <SelectTrigger className="h-8 w-[200px] text-xs">
                         <SelectValue placeholder="Select stage">
                             <span className="truncate">{row.stage_name || 'New'}</span>
                         </SelectValue>
@@ -278,7 +441,41 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
                 </Select>
             )
         },
-        {
+        ...(showProductSelection ? [{
+            key: 'product_mapped' as keyof LeadListItem,
+            header: 'Product',
+            render: (row: LeadListItem) => (
+                <div onClick={(e) => e.stopPropagation()}>
+                    <Select
+                        value={row.product_mapped || ""}
+                        onValueChange={async (value) => {
+                            if (!value) return;
+                            try {
+                                await api.updateLead(row.lead_id, { product_mapped: value });
+                                // Optimistically update local state to avoid flickers/sync issues
+                                setLeads(prev => prev.map(l =>
+                                    l.lead_id === row.lead_id ? { ...l, product_mapped: value } : l
+                                ));
+                                toast({ title: 'Product updated' });
+                            } catch (err) {
+                                console.error(err);
+                                toast({ title: 'Error', description: 'Failed to update product', variant: 'destructive' });
+                            }
+                        }}
+                    >
+                        <SelectTrigger className="w-[140px] h-8 text-xs">
+                            <SelectValue placeholder="Select..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {products.map(p => (
+                                <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+            )
+        }] : []),
+        ...(!hideStatusColumn ? [{
             key: 'status_name',
             header: 'Status',
             render: (row) => {
@@ -295,8 +492,7 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
                                 });
 
                                 // Refresh list
-                                const updatedLeads = await api.getLeads();
-                                setLeads(updatedLeads);
+                                fetchLeads();
                                 toast({ title: 'Status updated' });
                             } catch (err) {
                                 console.error('Failed to update status:', err);
@@ -304,10 +500,10 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
                             }
                         }}
                     >
-                        <SelectTrigger className="h-8 w-[150px]">
+                        <SelectTrigger className="h-8 w-[110px] text-xs">
                             <SelectValue placeholder="Select status">
                                 <span className={cn(
-                                    "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium",
+                                    "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium",
                                     row.status_name === 'New' && "bg-blue-100 text-blue-800",
                                     row.status_name === 'Active' && "bg-green-100 text-green-800",
                                     row.status_name === 'Inactive' && "bg-gray-100 text-gray-800",
@@ -327,42 +523,130 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
                     </Select>
                 );
             }
-        },
-        {
-            key: 'actions',
-            header: '',
-            render: (row) => (
-                <div className="flex items-center justify-end gap-2">
+        }] : []),
+        ...(showQuickCallActions ? [{
+            key: 'quickActions' as keyof LeadListItem,
+            header: 'Actions',
+            render: (row: LeadListItem) => (
+                <div className="flex items-center gap-1.5">
                     <Tooltip>
                         <TooltipTrigger asChild>
                             <Button
-                                variant="ghost"
+                                variant="outline"
                                 size="icon"
-                                className="h-8 w-8 hover:bg-muted"
-                                onClick={() => handleEdit(row)}
+                                className="h-8 w-8 border-blue-200 text-blue-600 hover:bg-blue-50 shadow-sm"
+                                onClick={() => {
+                                    setSelectedLead(row);
+                                    setCallLogDrawerOpen(true);
+                                }}
                             >
-                                <Pencil className="h-4 w-4 text-muted-foreground" />
+                                <Phone className="h-4 w-4" />
                             </Button>
                         </TooltipTrigger>
-                        <TooltipContent>Edit Lead</TooltipContent>
+                        <TooltipContent>Log New Call</TooltipContent>
                     </Tooltip>
 
                     <Tooltip>
                         <TooltipTrigger asChild>
                             <Button
-                                variant="ghost"
+                                variant="outline"
                                 size="icon"
-                                className="h-8 w-8 hover:bg-red-50 hover:text-red-600"
-                                onClick={() => handleDelete(row)}
+                                className="h-8 w-8 border-gray-200 text-muted-foreground hover:bg-gray-50 shadow-sm"
+                                onClick={() => {
+                                    setSelectedLead(row);
+                                    setCallHistoryDrawerOpen(true);
+                                }}
                             >
-                                <Trash2 className="h-4 w-4 text-muted-foreground group-hover:text-red-600" />
+                                <History className="h-4 w-4" />
                             </Button>
                         </TooltipTrigger>
-                        <TooltipContent>Delete Lead</TooltipContent>
+                        <TooltipContent>View Call History</TooltipContent>
                     </Tooltip>
                 </div>
             )
-        }
+        }] : []),
+        ...(showMeetingColumns ? [{
+            key: 'meetingActions' as keyof LeadListItem,
+            header: 'Actions',
+            render: (row: LeadListItem) => (
+                <div className="flex items-center gap-1.5">
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-8 w-8 border-primary/20 text-primary hover:bg-primary/5 shadow-sm"
+                                onClick={() => {
+                                    setSelectedLead(row);
+                                    setMeetingLogDrawerOpen(true);
+                                }}
+                            >
+                                <CalendarPlus className="h-4 w-4" />
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Schedule Meeting</TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-8 w-8 border-gray-200 text-muted-foreground hover:bg-gray-50 shadow-sm"
+                                onClick={() => {
+                                    setSelectedLead(row);
+                                    setMeetingHistoryDrawerOpen(true);
+                                }}
+                            >
+                                <History className="h-4 w-4" />
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Meeting History</TooltipContent>
+                    </Tooltip>
+                </div>
+            )
+        }] : []),
+        ...(!hideActions ? [{
+            key: 'actions' as keyof LeadListItem,
+            header: '',
+            render: (row: LeadListItem) => (
+                <div className="flex items-center justify-end gap-1 px-2 group">
+                    {!hideEditAction && (
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 hover:bg-white hover:text-primary transition-colors"
+                                    onClick={() => handleEdit(row)}
+                                >
+                                    <Pencil className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Edit Lead</TooltipContent>
+                        </Tooltip>
+                    )}
+                    {!hideDeleteAction && (
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 hover:bg-white hover:text-red-600 transition-colors"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDelete(row);
+                                    }}
+                                >
+                                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground group-hover:text-red-600" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Delete Lead</TooltipContent>
+                        </Tooltip>
+                    )}
+                </div>
+            )
+        }] : [])
     ];
 
     const handleEdit = async (lead: LeadListItem | null) => {
@@ -394,7 +678,6 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
             setFormData({
                 lead_date: new Date().toISOString().split('T')[0],
                 expected_value: 0,
-                status_name: '',
                 account_name: '',
                 industry: '',
                 head_office: '',
@@ -432,8 +715,7 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
                 await api.updateLead(selectedLead.lead_id, formData);
 
                 // Refresh leads list from API to show latest data
-                const updatedLeads = await api.getLeads();
-                setLeads(updatedLeads);
+                fetchLeads();
 
                 toast({ title: 'Lead updated successfully' });
             } catch (error) {
@@ -452,8 +734,7 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
 
                 if (response.success) {
                     // Refresh leads list to get the new lead with all joined fields
-                    const updatedLeads = await api.getLeads();
-                    setLeads(updatedLeads);
+                    fetchLeads();
                     toast({ title: 'Lead created successfully' });
                 }
             } catch (error) {
@@ -469,13 +750,13 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
         setEditModalOpen(false);
     };
 
+
     const handleConfirmDelete = async () => {
         if (selectedLead) {
             try {
                 await api.deleteLead(selectedLead.lead_id);
                 // Refresh list
-                const updatedLeads = await api.getLeads();
-                setLeads(updatedLeads);
+                fetchLeads();
                 toast({ title: 'Lead deleted successfully' });
             } catch (error) {
                 console.error('Error deleting lead:', error);
@@ -499,7 +780,7 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
                 l.lead_source,
                 l.stage_name,
                 l.expected_value,
-                l.next_followup_date || ''
+                l.next_followup_at || ''
             ].join(','))
         ].join('\n');
 
@@ -512,6 +793,8 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
         toast({ title: 'Export complete' });
     };
 
+    const openModal = () => handleEdit(null);
+
     return (
         <AppLayout>
             <div className="space-y-4 animate-fade-in">
@@ -520,62 +803,149 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
                         <h1 className="text-xl font-semibold text-foreground">{title}</h1>
                         <p className="text-sm text-muted-foreground">{description}</p>
                     </div>
-                    {hasPermission('create', 'leads') && (
-                        <Button size="sm" className="h-8 text-xs" onClick={() => handleEdit(null)}>
-                            <Plus className="h-3.5 w-3.5 mr-1.5" />
-                            Add Lead
+                    {allowedStageIds.includes(1) && !hideGeneratedBy && (
+                        <Button onClick={() => openModal()} size="sm" className="gap-2">
+                            <Plus className="h-4 w-4" /> Add Lead
                         </Button>
                     )}
                 </div>
 
-                {/* Filters */}
-                <div className="flex gap-2 flex-wrap">
-                    <Select value={stageFilter} onValueChange={setStageFilter}>
-                        <SelectTrigger className="h-8 w-[150px] text-xs">
-                            <SelectValue placeholder="All Stages" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Stages</SelectItem>
-                            {stages
-                                .filter(s => allowedStageIds.length === 0 || allowedStageIds.includes(s.stage_id))
-                                .map((stage) => (
-                                    <SelectItem key={stage.stage_id} value={stage.stage_name}>
-                                        {stage.stage_name}
-                                    </SelectItem>
-                                ))}
-                        </SelectContent>
-                    </Select>
+                <StatsCards stats={stats} loading={statsLoading} showCallStats={showCallStats} />
 
-                    <Select value={sourceFilter} onValueChange={setSourceFilter}>
-                        <SelectTrigger className="h-8 w-[150px] text-xs">
-                            <SelectValue placeholder="All Sources" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Sources</SelectItem>
-                            {leadSources.map((source) => (
-                                <SelectItem key={source.lead_source_id} value={source.source_name}>
-                                    {source.source_name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
+                <div className="flex flex-col gap-4 bg-muted/20 p-4 rounded-xl border border-primary/5 mb-6">
+                    <div className="flex flex-wrap gap-2">
+                        {!hideStageFilter && (
+                            <Select value={stageFilter} onValueChange={setStageFilter}>
+                                <SelectTrigger className="h-8 w-[150px] text-xs">
+                                    <SelectValue placeholder="All Stages" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Stages</SelectItem>
+                                    {stages
+                                        .filter(s => allowedStageIds.length === 0 || allowedStageIds.includes(s.stage_id))
+                                        .map((stage) => (
+                                            <SelectItem key={stage.stage_id} value={stage.stage_name}>
+                                                {stage.stage_name}
+                                            </SelectItem>
+                                        ))}
+                                </SelectContent>
+                            </Select>
+                        )}
 
-                <div className="relative">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        placeholder="Search leads, accounts..."
-                        className="pl-9 h-9 text-sm"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                    />
+                        {!hideSourceFilter && (
+                            <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                                <SelectTrigger className="h-8 w-[150px] text-xs">
+                                    <SelectValue placeholder="All Sources" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Sources</SelectItem>
+                                    {leadSources.map((source) => (
+                                        <SelectItem key={source.lead_source_id} value={source.source_name}>
+                                            {source.source_name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
+
+                        {showIndustryFilter && (
+                            <Select value={industryFilter} onValueChange={setIndustryFilter}>
+                                <SelectTrigger className="h-8 w-[150px] text-xs">
+                                    <SelectValue placeholder="All Industries" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Industries</SelectItem>
+                                    {industries.map((ind) => (
+                                        <SelectItem key={ind.industry_id} value={ind.industry_name}>
+                                            {ind.industry_name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
+
+                        {showLOBFilter && (
+                            <Select value={lobFilter} onValueChange={setLobFilter}>
+                                <SelectTrigger className="h-8 w-[150px] text-xs">
+                                    <SelectValue placeholder="All LOBs" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All LOBs</SelectItem>
+                                    {allLobs.map((lob) => (
+                                        <SelectItem key={lob.lob_id} value={lob.lob_name}>
+                                            {lob.lob_name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
+
+                        {showCityFilter && (
+                            <Select value={cityFilter} onValueChange={setCityFilter}>
+                                <SelectTrigger className="h-8 w-[150px] text-xs">
+                                    <SelectValue placeholder="All Cities" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Cities</SelectItem>
+                                    {allCities.map((city) => (
+                                        <SelectItem key={city.city_id} value={city.city_name}>
+                                            {city.city_name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
+
+                        {showProductFilter && (
+                            <Select value={productFilter} onValueChange={setProductFilter}>
+                                <SelectTrigger className="h-8 w-[150px] text-xs">
+                                    <SelectValue placeholder="All Products" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Products</SelectItem>
+                                    {products.map((p) => (
+                                        <SelectItem key={p.id} value={p.name}>
+                                            {p.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
+
+                        {showOutcomeFilter && (
+                            <Select value={outcomeFilter} onValueChange={setOutcomeFilter}>
+                                <SelectTrigger className="h-8 w-[160px] text-xs">
+                                    <SelectValue placeholder="All Outcomes" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Outcomes</SelectItem>
+                                    {['No Answer', 'Busy', 'Call Back Later', 'Interested', 'Not Interested', 'Wrong Number'].map((outcome) => (
+                                        <SelectItem key={outcome} value={outcome}>
+                                            {outcome}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
+
+                        <div className="relative flex-grow max-w-sm ml-auto">
+                            <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Search leads, accounts..."
+                                className="pl-9 h-8 text-xs shadow-sm bg-white"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                            />
+                        </div>
+                    </div>
                 </div>
 
                 <DataTable
                     columns={columns}
                     data={paginatedData}
                     page={page}
-                    totalPages={totalPages}
+                    total={filteredData.length}
+                    limit={limit}
                     onPageChange={setPage}
                 />
 
@@ -829,9 +1199,41 @@ export function LeadsTemplate({ title, description, allowedStageIds, showDEColum
                     </AlertDialogContent>
                 </AlertDialog>
 
-            </div>
-        </AppLayout>
+                <CallLogDrawer
+                    open={callLogDrawerOpen}
+                    onOpenChange={setCallLogDrawerOpen}
+                    lead={selectedLead}
+                    onSaveSuccess={async () => {
+                        // Refresh leads list to show updated timestamps
+                        const updatedLeads = await api.getLeads();
+                        setLeads(updatedLeads);
+                    }}
+                />
+
+                <CallHistoryDrawer
+                    open={callHistoryDrawerOpen}
+                    onOpenChange={setCallHistoryDrawerOpen}
+                    lead={selectedLead}
+                />
+
+                <MeetingLogDrawer
+                    open={meetingLogDrawerOpen}
+                    onOpenChange={setMeetingLogDrawerOpen}
+                    lead={selectedLead}
+                    onSaveSuccess={async () => {
+                        // Refresh leads list
+                        const updatedLeads = await api.getLeads();
+                        setLeads(updatedLeads);
+                    }}
+                    defaultMeetingType={meetingType}
+                />
+
+                <MeetingHistoryDrawer
+                    open={meetingHistoryDrawerOpen}
+                    onOpenChange={setMeetingHistoryDrawerOpen}
+                    lead={selectedLead}
+                />
+            </div >
+        </AppLayout >
     );
 }
-
-

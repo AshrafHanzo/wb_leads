@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import Dashboard from "@/pages/Dashboard";
 import Accounts from "@/pages/Accounts";
+import AccountDetails from "@/pages/AccountDetails";
 import Leads from "@/pages/Leads";
 import Users from "@/pages/Users";
 import Stages from "@/pages/Stages";
@@ -23,6 +24,7 @@ import Pilot from "@/pages/Pilot";
 import ClosedWon from "@/pages/ClosedWon";
 import ClosedLost from "@/pages/ClosedLost";
 import Reports from "@/pages/Reports";
+import Meetings from "@/pages/Meetings";
 import Login from "@/pages/Login";
 import NotFound from "./pages/NotFound";
 
@@ -50,6 +52,7 @@ const App = () => (
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/leads" element={<ProtectedRoute><Leads /></ProtectedRoute>} />
             <Route path="/accounts" element={<ProtectedRoute><Accounts /></ProtectedRoute>} />
+            <Route path="/accounts/:id" element={<ProtectedRoute><AccountDetails /></ProtectedRoute>} />
             <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
             <Route path="/stages" element={<ProtectedRoute><Stages /></ProtectedRoute>} />
             <Route path="/sourcing" element={<ProtectedRoute><Sourcing /></ProtectedRoute>} />
@@ -64,6 +67,7 @@ const App = () => (
             <Route path="/pilot" element={<ProtectedRoute><Pilot /></ProtectedRoute>} />
             <Route path="/closed-won" element={<ProtectedRoute><ClosedWon /></ProtectedRoute>} />
             <Route path="/closed-lost" element={<ProtectedRoute><ClosedLost /></ProtectedRoute>} />
+            <Route path="/meetings" element={<ProtectedRoute><Meetings /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
 

@@ -33,14 +33,14 @@ export function CompactModal({
 }: CompactModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={cn("p-0 gap-0", sizeClasses[size])}>
-        <DialogHeader className="px-4 py-3 border-b bg-muted/30">
+      <DialogContent className={cn("p-0 gap-0 overflow-hidden flex flex-col", sizeClasses[size], "max-h-[min(90vh,800px)]")}>
+        <DialogHeader className="px-4 py-3 border-b bg-muted/30 shrink-0">
           <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
           {description && (
             <DialogDescription className="text-xs">{description}</DialogDescription>
           )}
         </DialogHeader>
-        <div className="p-4">
+        <div className="p-4 overflow-y-auto flex-1">
           {children}
         </div>
       </DialogContent>

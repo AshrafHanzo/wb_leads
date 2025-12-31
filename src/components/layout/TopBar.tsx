@@ -1,4 +1,4 @@
-import { Bell, Search, ChevronDown } from 'lucide-react';
+import { Bell, Search, ChevronDown, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -11,11 +11,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useAuth } from '@/contexts/AuthContext';
-import { mockUsers } from '@/lib/mockData';
 import { Badge } from '@/components/ui/badge';
 
 export function TopBar() {
-  const { currentUser, setCurrentUser } = useAuth();
+  const { currentUser, logout } = useAuth();
 
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
@@ -36,8 +35,8 @@ export function TopBar() {
       <div className="flex-1 max-w-md">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input 
-            placeholder="Search leads, accounts..." 
+          <Input
+            placeholder="Search leads, accounts..."
             className="pl-9 h-8 text-sm bg-muted/50 border-0 focus-visible:ring-1"
           />
         </div>
@@ -79,20 +78,12 @@ export function TopBar() {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-xs text-muted-foreground">Switch Role (Demo)</DropdownMenuLabel>
-            {mockUsers.filter(u => u.status === 'Active').map(user => (
-              <DropdownMenuItem 
-                key={user.user_id}
-                onClick={() => setCurrentUser(user)}
-                className="text-sm"
-              >
-                <span className="flex-1">{user.full_name}</span>
-                <Badge variant="outline" className="text-2xs">{user.role}</Badge>
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-sm text-destructive">
-              Sign out
+            <DropdownMenuItem
+              className="text-sm text-destructive cursor-pointer"
+              onClick={logout}
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              <span>Sign out</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

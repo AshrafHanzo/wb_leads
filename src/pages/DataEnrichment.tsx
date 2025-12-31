@@ -9,6 +9,12 @@ export default function DataEnrichment() {
             showDEColumn={true}
             hideGeneratedBy={true}
             hideSourceFrom={true}
+            hideStatusColumn={true}
+            hideStageFilter={true}
+            hideSourceFilter={true}
+            showIndustryFilter={true}
+            showLOBFilter={true}
+            showCityFilter={true}
         />
     );
 }

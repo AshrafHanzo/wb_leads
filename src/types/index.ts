@@ -22,6 +22,38 @@ export interface LeadSourceMaster {
   source_name: string;
 }
 
+export interface CityMaster {
+  city_id: number;
+  city_name: string;
+}
+
+export interface CountryMaster {
+  country_id: number;
+  country_name: string;
+}
+
+export interface IndustryLOB {
+  lob_id: number;
+  lob_name: string;
+  industry_name: string;
+}
+
+export interface DepartmentMaster {
+  id: number;
+  name: string;
+}
+
+export interface UseCaseMaster {
+  id: number;
+  name: string;
+  lob_id: number;
+}
+
+export interface ProductMaster {
+  id: number;
+  name: string;
+}
+
 // Account types
 export type AccountStatus = 'Prospect' | 'Active' | 'Dormant';
 
@@ -30,7 +62,7 @@ export interface Account {
   account_name: string;
   industry: string;
   head_office: string;
-  location: string;
+  hq_city?: string;
   company_website: string;
   primary_contact_name: string;
   contact_person_role: string;
@@ -46,6 +78,17 @@ export interface Account {
   remarks: string;
   created_date: string;
   last_updated: string;
+  primary_lob?: string;
+  data_completion_score?: number;
+  lead_id?: number;
+  stage_id?: number;
+  stage_name?: string;
+  contact_person?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  employee_count?: number;
+  country?: string;
 }
 
 // Lead types
@@ -62,6 +105,21 @@ export interface LeadStageStatus {
   stage_id: number;
 }
 
+export interface TelecallLog {
+  call_id: number;
+  lead_id: number;
+  account_id: number;
+  telecaller_user_id: number;
+  telecaller_name?: string;
+  call_datetime: string;
+  call_duration_seconds?: number;
+  call_outcome: string;
+  notes?: string;
+  followup_required: boolean;
+  followup_datetime?: string;
+  created_at: string;
+}
+
 export interface Lead {
   lead_id: number;
   account_id: number;
@@ -72,8 +130,8 @@ export interface Lead {
   bd_assigned_to: number | null;
   stage_id: number;
   status_id: number;
-  last_call_date: string | null;
-  next_followup_date: string | null;
+  last_contacted_at: string | null;
+  next_followup_at: string | null;
   expected_value: number;
   products_interested: string;
   product_mapped: string;
@@ -112,6 +170,7 @@ export interface AuthContextType {
 
 export interface LeadListItem {
   lead_id: number;
+  account_id: number;
   lead_date: string;
   account_name: string;
   generated_by: string;
@@ -122,4 +181,81 @@ export interface LeadListItem {
   stage_id: number;
   status_name: string;
   status_id: number;
+  industry?: string;
+  primary_lob?: string;
+  hq_city?: string;
+  data_completion_score?: number;
+  expected_value?: number;
+  next_followup_at?: string | null;
+  product_mapped?: string;
+  contact_phone?: string;
+  last_call_outcome?: string;
 }
+
+// Account Details - Related Entities
+export interface AccountContact {
+  id: number;
+  account_id: number;
+  name: string;
+  role: string;
+  phone: string;
+  email: string;
+}
+
+export interface AccountLineOfBusiness {
+  id: number;
+  account_id: number;
+  business_type: string;
+  description: string;
+}
+
+export interface AccountDepartment {
+  id: number;
+  account_id: number;
+  department_name: string;
+  head_name: string;
+}
+
+export interface AccountUseCase {
+  id: number;
+  account_id: number;
+  use_case_title: string;
+  description: string;
+  status: 'Identified' | 'In Progress' | 'Implemented' | 'On Hold';
+}
+
+export interface DepartmentPainPoint {
+  id: number;
+  department_id: number;
+  department_name?: string;
+  pain_point: string;
+  severity: 'Low' | 'Medium' | 'High' | 'Critical';
+  notes: string;
+}
+
+export interface AccountFull extends Account {
+  contacts: AccountContact[];
+  lineOfBusiness: AccountLineOfBusiness[];
+  departments: AccountDepartment[];
+  useCases: AccountUseCase[];
+  painPoints: DepartmentPainPoint[];
+}
+
+export interface AccountMeeting {
+  meeting_id: number;
+  lead_id: number;
+  account_id: number;
+  meeting_type: string;
+  meeting_mode: 'Online' | 'In-Person';
+  meeting_date: string;
+  meeting_time: string;
+  meeting_city?: number;
+  city_name?: string;
+  meeting_address?: string;
+  internal_attendees?: string;
+  customer_attendees?: string;
+  meeting_notes?: string;
+  meeting_status: 'Scheduled' | 'Completed' | 'Cancelled';
+  created_at: string;
+}
+

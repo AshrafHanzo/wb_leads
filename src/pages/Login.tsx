@@ -47,10 +47,11 @@ export default function Login() {
         <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
             <div className="w-full max-w-md space-y-8">
                 <div className="flex flex-col items-center">
-                    <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center mb-4">
-                        <Zap className="h-6 w-6 text-primary" />
+                    <div className="h-16 w-16 mb-4">
+                        {/* <Zap className="h-6 w-6 text-primary" /> */}
+                        <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
                     </div>
-                    <h2 className="text-2xl font-bold text-center text-gray-900">WorkBooster</h2>
+                    <h2 className="text-2xl font-bold text-center text-gray-900">WorkBoosterAI</h2>
                     <p className="text-muted-foreground mt-2">Sign in to your account</p>
                 </div>
 

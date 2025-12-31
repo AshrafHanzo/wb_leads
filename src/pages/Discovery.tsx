@@ -6,6 +6,8 @@ export default function Discovery() {
             title="Discovery"
             description="Leads in discovery phase"
             allowedStageIds={[7]}
+            showMeetingColumns={true}
+            meetingType="discovery"
         />
     );
 }
