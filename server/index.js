@@ -8,7 +8,8 @@ const port = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Database connection
 const pool = new Pool({
@@ -78,6 +79,17 @@ pool.query('SELECT NOW()', async (err, res) => {
             console.log('Added company_website column to accounts table');
         } catch (e) {
             console.log('Note: company_website column might already exist', e.message);
+        }
+
+        // Make name column nullable in account_contacts table
+        try {
+            await pool.query(`
+                ALTER TABLE account_contacts 
+                ALTER COLUMN name DROP NOT NULL
+            `);
+            console.log('Made name column nullable in account_contacts table');
+        } catch (e) {
+            console.log('Note: name column might already be nullable', e.message);
         }
     }
 });
@@ -976,7 +988,8 @@ app.get('/api/dashboard', async (req, res) => {
                     COUNT(*) FILTER (WHERE call_outcome = 'Busy') as busy,
                     COUNT(*) FILTER (WHERE call_outcome = 'Call Back Later') as callback,
                     COUNT(*) FILTER (WHERE call_outcome = 'Interested') as interested,
-                    COUNT(*) FILTER (WHERE call_outcome = 'Not Interested') as not_interested
+                    COUNT(*) FILTER (WHERE call_outcome = 'Not Interested') as not_interested,
+                    COUNT(*) FILTER (WHERE call_outcome = 'Wrong Number') as wrong_number
                 FROM lead_call_logs
                 WHERE created_at::date = CURRENT_DATE
             `;
@@ -997,7 +1010,8 @@ app.get('/api/dashboard', async (req, res) => {
                     busy: parseInt(callStats.busy),
                     callback: parseInt(callStats.callback),
                     interested: parseInt(callStats.interested),
-                    notInterested: parseInt(callStats.not_interested)
+                    notInterested: parseInt(callStats.not_interested),
+                    wrongNumber: parseInt(callStats.wrong_number)
                 }
             });
 
@@ -1083,7 +1097,8 @@ app.get('/api/dashboard/user-stats', async (req, res) => {
                     COUNT(*) FILTER (WHERE call_outcome = 'Busy') as busy,
                     COUNT(*) FILTER (WHERE call_outcome = 'Call Back Later') as callback,
                     COUNT(*) FILTER (WHERE call_outcome = 'Interested') as interested,
-                    COUNT(*) FILTER (WHERE call_outcome = 'Not Interested') as not_interested
+                    COUNT(*) FILTER (WHERE call_outcome = 'Not Interested') as not_interested,
+                    COUNT(*) FILTER (WHERE call_outcome = 'Wrong Number') as wrong_number
                 FROM lead_call_logs
                 WHERE created_at::date = CURRENT_DATE
                 GROUP BY telecaller_user_id
@@ -1095,7 +1110,8 @@ app.get('/api/dashboard/user-stats', async (req, res) => {
                 COALESCE(cc.busy, 0) as busy,
                 COALESCE(cc.callback, 0) as callback,
                 COALESCE(cc.interested, 0) as interested,
-                COALESCE(cc.not_interested, 0) as not_interested
+                COALESCE(cc.not_interested, 0) as not_interested,
+                COALESCE(cc.wrong_number, 0) as wrong_number
             FROM lead_counts lc
             LEFT JOIN call_counts cc ON lc.user_id = cc.telecaller_user_id
             ORDER BY lc.today DESC, lc.full_name ASC
@@ -1117,7 +1133,8 @@ app.get('/api/dashboard/user-stats', async (req, res) => {
                 busy: parseInt(row.busy),
                 callback: parseInt(row.callback),
                 interested: parseInt(row.interested),
-                notInterested: parseInt(row.not_interested)
+                notInterested: parseInt(row.not_interested),
+                wrongNumber: parseInt(row.wrong_number)
             }
         }));
 
@@ -1154,7 +1171,8 @@ app.get('/api/leads/stats', async (req, res) => {
                 (SELECT COUNT(*) FROM lead_call_logs WHERE created_at::date = CURRENT_DATE AND call_outcome = 'Busy') as busy,
                 (SELECT COUNT(*) FROM lead_call_logs WHERE created_at::date = CURRENT_DATE AND call_outcome = 'Call Back Later') as callback,
                 (SELECT COUNT(*) FROM lead_call_logs WHERE created_at::date = CURRENT_DATE AND call_outcome = 'Interested') as interested,
-                (SELECT COUNT(*) FROM lead_call_logs WHERE created_at::date = CURRENT_DATE AND call_outcome = 'Not Interested') as not_interested
+                (SELECT COUNT(*) FROM lead_call_logs WHERE created_at::date = CURRENT_DATE AND call_outcome = 'Not Interested') as not_interested,
+                (SELECT COUNT(*) FROM lead_call_logs WHERE created_at::date = CURRENT_DATE AND call_outcome = 'Wrong Number') as wrong_number
             FROM leads
             WHERE 1=1 ${stageFilter}
         `;
@@ -1171,11 +1189,74 @@ app.get('/api/leads/stats', async (req, res) => {
                 busy: parseInt(stats.busy),
                 callback: parseInt(stats.callback),
                 interested: parseInt(stats.interested),
-                notInterested: parseInt(stats.not_interested)
+                notInterested: parseInt(stats.not_interested),
+                wrongNumber: parseInt(stats.wrong_number)
             }
         });
     } catch (err) {
         console.error('Error fetching lead stats:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Get Follow-ups for a specific date
+app.get('/api/leads/followups', async (req, res) => {
+    const { date } = req.query;
+
+    // Use provided date or default to today
+    const targetDate = date || new Date().toISOString().split('T')[0];
+
+    try {
+        const query = `
+            SELECT 
+                l.lead_id,
+                l.account_id,
+                l.next_followup_at,
+                a.account_name,
+                a.primary_contact_name,
+                a.contact_phone,
+                s.stage_name,
+                (
+                    SELECT call_outcome 
+                    FROM lead_call_logs 
+                    WHERE lead_id = l.lead_id 
+                    ORDER BY created_at DESC 
+                    LIMIT 1
+                ) as last_call_outcome,
+                (
+                    SELECT notes 
+                    FROM lead_call_logs 
+                    WHERE lead_id = l.lead_id 
+                    ORDER BY created_at DESC 
+                    LIMIT 1
+                ) as last_call_notes
+            FROM leads l
+            JOIN accounts a ON l.account_id = a.account_id
+            LEFT JOIN lead_stages s ON l.stage_id = s.stage_id
+            WHERE l.next_followup_at::date = $1::date
+            ORDER BY l.next_followup_at ASC
+        `;
+
+        const result = await pool.query(query, [targetDate]);
+
+        // Also get count for today and selected date
+        const countQuery = `
+            SELECT 
+                COUNT(*) FILTER (WHERE next_followup_at::date = CURRENT_DATE) as today_count,
+                COUNT(*) FILTER (WHERE next_followup_at::date = $1::date) as selected_count
+            FROM leads
+            WHERE next_followup_at IS NOT NULL
+        `;
+        const countResult = await pool.query(countQuery, [targetDate]);
+
+        res.json({
+            followups: result.rows,
+            todayCount: parseInt(countResult.rows[0].today_count) || 0,
+            selectedCount: parseInt(countResult.rows[0].selected_count) || 0,
+            selectedDate: targetDate
+        });
+    } catch (err) {
+        console.error('Error fetching followups:', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -1269,7 +1350,8 @@ app.put('/api/leads/:id', async (req, res) => {
         lead_generated_by,
         stage_id,
         status_id,
-        product_mapped
+        product_mapped,
+        call_status
     } = req.body;
 
     const client = await pool.connect();
@@ -1321,14 +1403,16 @@ app.put('/api/leads/:id', async (req, res) => {
                 lead_generated_by = COALESCE($2, lead_generated_by),
                 stage_id = COALESCE($3, stage_id),
                 status_id = COALESCE($4, status_id),
-                product_mapped = COALESCE($5, product_mapped)
-            WHERE lead_id = $6`,
+                product_mapped = COALESCE($5, product_mapped),
+                call_status = COALESCE($6, call_status)
+            WHERE lead_id = $7`,
             [
                 lead_source || null,
                 lead_generated_by || null,
                 stage_id || null,
                 status_id || null,
                 product_mapped || null,
+                call_status || null,
                 id
             ]
         );
@@ -1364,7 +1448,8 @@ app.post('/api/leads', async (req, res) => {
         lead_source,
         lead_generated_by,
         stage_id,
-        status_id
+        status_id,
+        call_status
     } = req.body;
 
     // Validate mandatory fields
@@ -1436,10 +1521,10 @@ app.post('/api/leads', async (req, res) => {
         const leadResult = await client.query(
             `INSERT INTO leads(
                 account_id, lead_date, lead_source, lead_generated_by,
-                stage_id, status_id, created_date
-            ) VALUES($1, NOW(), $2, $3, $4, $5, NOW())
+                stage_id, status_id, call_status, created_date
+            ) VALUES($1, NOW(), $2, $3, $4, $5, $6, NOW())
             RETURNING lead_id`,
-            [account_id, lead_source, lead_generated_by, stage_id, status_id]
+            [account_id, lead_source, lead_generated_by, stage_id, status_id, call_status || null]
         );
 
         await client.query('COMMIT');
@@ -1459,8 +1544,139 @@ app.post('/api/leads', async (req, res) => {
     }
 });
 
+
 // =====================================================
-// BULK IMPORT ENDPOINT FOR N8N INTEGRATION
+// CSV IMPORT ENDPOINT (Spreadsheet Format)
+// =====================================================
+app.post('/api/leads/import-csv', async (req, res) => {
+    const leads = Array.isArray(req.body) ? req.body : [req.body];
+    const results = { success: 0, skipped: 0, failed: 0, errors: [] };
+
+    console.log(`Starting CSV import for ${leads.length} leads...`);
+
+    for (const leadData of leads) {
+        // Map spreadsheet columns to DB fields
+        // Expected format keys based on standard CSV to JSON parsing:
+        // "Head Office", "Account Name", "Role/Designation", "Industry", "Name", "Phone", "Email", "Company Website", "Call Status", "Location"
+
+        const account_name = leadData['Account Name'] || leadData['account_name'];
+
+        // Skip valid rows check
+        if (!account_name || account_name.trim() === '') {
+            continue;
+        }
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            // 1. Check if account already exists (Skip Duplicates)
+            const checkAccount = await client.query(
+                'SELECT account_id FROM accounts WHERE LOWER(account_name) = LOWER($1)',
+                [account_name.trim()]
+            );
+
+            if (checkAccount.rows.length > 0) {
+                // Account exists - SKIP this lead
+                await client.query('ROLLBACK');
+                results.skipped++;
+                continue;
+            }
+
+            // 2. Prepare data
+            const head_office = leadData['Head Office'] || leadData['head_office'] || null;
+            const role = leadData['Role/Designation'] || leadData['contact_person_role'] || null;
+            const industry = leadData['Industry'] || leadData['industry'] || null;
+            const contact_name = leadData['Name'] || leadData['primary_contact_name'] || null;
+            let phone = leadData['Phone'] || leadData['Phone '] || leadData['contact_phone'] || null;
+            const email = leadData['Email'] || leadData['Email '] || leadData['contact_email'] || null;
+            const website = leadData['Company Website'] || leadData['company_website'] || null;
+            const call_status = leadData['Call Status'] || leadData['call_status'] || null;
+            const location = leadData['Location'] || leadData['location'] || null;
+
+            // Get Phone 2 from the spreadsheet (separate column)
+            // Try various possible header names
+            let company_phone = leadData['Phone 2'] || leadData['Phone2'] || leadData['phone 2'] || leadData['phone_2'] || null;
+            console.log(`DEBUG: Phone 2 raw value for "${account_name}":`, company_phone, '| Available keys:', Object.keys(leadData).filter(k => k.toLowerCase().includes('phone')));
+
+            // Also handle comma-separated phones in the main Phone field as fallback
+            if (!company_phone && phone && phone.includes(',')) {
+                const parts = phone.split(',').map(p => p.trim());
+                phone = parts[0];
+                company_phone = parts.slice(1).join(', ');
+            }
+
+            // 3. Create Account
+            const insertAccount = await client.query(
+                `INSERT INTO accounts(
+                    account_name, industry, head_office, location,
+                    primary_contact_name, contact_person_role, contact_phone,
+                    contact_email, company_website, company_phone, account_status, 
+                    created_date, last_updated
+                ) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Prospect', NOW(), NOW())
+                RETURNING account_id`,
+                [
+                    account_name.trim(),
+                    industry,
+                    head_office,
+                    location,
+                    contact_name,
+                    role,
+                    phone,
+                    email,
+                    website,
+                    company_phone
+                ]
+            );
+            const account_id = insertAccount.rows[0].account_id;
+
+            // 4. Create Lead
+            // Defaul to first user (Admin) if not specified
+            const lead_generated_by = 1;
+            // Default to 'Lead Sourcing' -> 'New' (stage=1, status=1)
+            const stage_id = 1;
+            const status_id = 1;
+
+            await client.query(
+                `INSERT INTO leads(
+                    account_id, lead_date, lead_source, lead_generated_by,
+                    stage_id, status_id, call_status, created_date
+                ) VALUES($1, NOW(), 'Spreadsheet Import', $2, $3, $4, $5, NOW())`,
+                [account_id, lead_generated_by, stage_id, status_id, call_status]
+            );
+
+            // 5. If Phone 2 exists, create a Key Contact entry
+            if (company_phone) {
+                await client.query(
+                    `INSERT INTO account_contacts (account_id, name, phone)
+                     VALUES ($1, $2, $3)`,
+                    [account_id, null, company_phone]
+                );
+            }
+
+            await client.query('COMMIT');
+            results.success++;
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            results.failed++;
+            results.errors.push({
+                company: account_name,
+                error: error.message
+            });
+            console.error(`Error importing lead "${account_name}":`, error.message);
+        } finally {
+            client.release();
+        }
+    }
+
+    res.json({
+        message: `Import complete: ${results.success} added, ${results.skipped} skipped (duplicates), ${results.failed} failed`,
+        ...results
+    });
+});
+
+
 // =====================================================
 // This endpoint accepts leads from Google Sheets via n8n
 app.post('/api/leads/bulk-import', async (req, res) => {

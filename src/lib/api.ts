@@ -298,6 +298,16 @@ export const api = {
         return response.json();
     },
 
+    // Import leads from CSV (Array of objects)
+    importLeads: async (leads: any[]) => {
+        const response = await fetch(`${API_BASE_URL}/leads/import-csv`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(leads)
+        });
+        return response.json();
+    },
+
     updateUser: async (id: number, userData: any) => {
         const response = await fetch(`${API_BASE_URL}/users/${id}`, {
             method: 'PUT',
@@ -640,6 +650,28 @@ export const api = {
             body: JSON.stringify({ meeting_date: date, meeting_time: time }),
         });
         if (!response.ok) throw new Error('Failed to reschedule meeting');
+        return response.json();
+    },
+
+    async getFollowups(date?: string): Promise<{
+        followups: Array<{
+            lead_id: number;
+            account_id: number;
+            next_followup_at: string;
+            account_name: string;
+            primary_contact_name: string;
+            contact_phone: string;
+            stage_name: string;
+            last_call_outcome: string;
+            last_call_notes: string;
+        }>;
+        todayCount: number;
+        selectedCount: number;
+        selectedDate: string;
+    }> {
+        const queryParams = date ? `?date=${date}` : '';
+        const response = await fetch(`${API_BASE_URL}/leads/followups${queryParams}`);
+        if (!response.ok) throw new Error('Failed to fetch followups');
         return response.json();
     }
 };

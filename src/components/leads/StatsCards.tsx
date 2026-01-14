@@ -14,6 +14,7 @@ interface StatsCardsProps {
             callback: number;
             interested: number;
             notInterested: number;
+            wrongNumber: number;
         };
     };
     loading?: boolean;
@@ -67,13 +68,14 @@ export function StatsCards({ stats, loading, showCallStats }: StatsCardsProps) {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 flex-1">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 flex-1">
                                 {[
                                     { label: 'No Answer', value: stats.outcomes?.noAnswer, bg: 'from-white to-slate-50/50', border: 'border-slate-100', text: 'text-slate-600' },
                                     { label: 'Busy', value: stats.outcomes?.busy, bg: 'from-white to-amber-50/30', border: 'border-amber-100/50', text: 'text-amber-600' },
                                     { label: 'Call Back', value: stats.outcomes?.callback, bg: 'from-white to-blue-50/30', border: 'border-blue-100/50', text: 'text-blue-600' },
                                     { label: 'Interested', value: stats.outcomes?.interested, bg: 'from-white to-emerald-50/30', border: 'border-emerald-100/50', text: 'text-emerald-600' },
-                                    { label: 'Not Int.', value: stats.outcomes?.notInterested, bg: 'from-white to-rose-50/30', border: 'border-rose-100/50', text: 'text-rose-600' }
+                                    { label: 'Not Int.', value: stats.outcomes?.notInterested, bg: 'from-white to-rose-50/30', border: 'border-rose-100/50', text: 'text-rose-600' },
+                                    { label: 'Wrong No.', value: stats.outcomes?.wrongNumber, bg: 'from-white to-purple-50/30', border: 'border-purple-100/50', text: 'text-purple-600' }
                                 ].map((box) => (
                                     <div key={box.label} className={`group/stat relative overflow-hidden bg-gradient-to-b ${box.bg} p-2.5 rounded-lg border ${box.border} shadow-[0_1px_2px_rgba(0,0,0,0,03)] hover:shadow-md transition-all duration-300 flex flex-col items-center justify-center min-w-[100px]`}>
                                         <span className="text-[8px] uppercase text-slate-400 font-bold tracking-wider mb-1 text-center">{box.label}</span>

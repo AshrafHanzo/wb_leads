@@ -1,11 +1,12 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Plus, Pencil, Trash2, Eye, MoreHorizontal } from 'lucide-react';
+import { Plus, Pencil, Trash2, Eye, MoreHorizontal, Calendar, XCircle, Search } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataTable, Column } from '@/components/common/DataTable';
 import { CompactModal } from '@/components/common/CompactModal';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { StatusBadge } from '@/components/common/StatusBadge';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -43,6 +44,8 @@ export default function Accounts() {
   const [industryFilter, setIndustryFilter] = useState<string>('all');
   const [lobFilter, setLobFilter] = useState<string>('all');
   const [cityFilter, setCityFilter] = useState<string>('all');
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [sortKey, setSortKey] = useState<string>('account_name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -120,6 +123,24 @@ export default function Accounts() {
       result = result.filter(a => a.hq_city === cityFilter);
     }
 
+    // Date filter
+    if (dateFrom) {
+      const fromDate = new Date(dateFrom);
+      fromDate.setHours(0, 0, 0, 0);
+      result = result.filter((a) => {
+        const accountDate = new Date(a.created_date);
+        return accountDate >= fromDate;
+      });
+    }
+    if (dateTo) {
+      const toDate = new Date(dateTo);
+      toDate.setHours(23, 59, 59, 999);
+      result = result.filter((a) => {
+        const accountDate = new Date(a.created_date);
+        return accountDate <= toDate;
+      });
+    }
+
     result.sort((a, b) => {
       const aVal = a[sortKey as keyof Account];
       const bVal = b[sortKey as keyof Account];
@@ -131,9 +152,10 @@ export default function Accounts() {
     });
 
     return result;
-  }, [accounts, search, industryFilter, lobFilter, cityFilter, sortKey, sortDirection]);
+  }, [accounts, search, industryFilter, lobFilter, cityFilter, dateFrom, dateTo, sortKey, sortDirection]);
 
-  const paginatedData = filteredData.slice((page - 1) * limit, page * limit);
+  // Show all data without pagination
+  const displayData = filteredData;
 
   const columns: Column<Account>[] = [
     {
@@ -381,54 +403,108 @@ export default function Accounts() {
           )}
         </div>
 
-        <div className="flex gap-2">
+        {/* Filters Section - Stunning Design */}
+        <div className="flex flex-col gap-3 bg-muted/20 p-4 rounded-xl border border-primary/5 mb-4">
+          {/* Row 1: Dropdown Filters */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={industryFilter} onValueChange={setIndustryFilter}>
+              <SelectTrigger className="w-32 h-8 text-xs bg-white">
+                <SelectValue placeholder="Industry" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Industries</SelectItem>
+                {allIndustries.map(i => (
+                  <SelectItem key={i.industry_id} value={i.industry_name}>{i.industry_name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
+            <Select value={lobFilter} onValueChange={setLobFilter}>
+              <SelectTrigger className="w-32 h-8 text-xs bg-white">
+                <SelectValue placeholder="Line of Business" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All LOBs</SelectItem>
+                {allLobs.map(l => (
+                  <SelectItem key={l.lob_id} value={l.lob_name}>{l.lob_name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          <Select value={industryFilter} onValueChange={setIndustryFilter}>
-            <SelectTrigger className="w-32 h-8 text-xs">
-              <SelectValue placeholder="Industry" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Industries</SelectItem>
-              {allIndustries.map(i => (
-                <SelectItem key={i.industry_id} value={i.industry_name}>{i.industry_name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <Select value={cityFilter} onValueChange={setCityFilter}>
+              <SelectTrigger className="w-32 h-8 text-xs bg-white">
+                <SelectValue placeholder="HQ City" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Cities</SelectItem>
+                {allCities.map(c => (
+                  <SelectItem key={c.city_id} value={c.city_name}>{c.city_name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-          <Select value={lobFilter} onValueChange={setLobFilter}>
-            <SelectTrigger className="w-32 h-8 text-xs">
-              <SelectValue placeholder="Line of Business" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All LOBs</SelectItem>
-              {allLobs.map(l => (
-                <SelectItem key={l.lob_id} value={l.lob_name}>{l.lob_name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Row 2: Date Filter + Search */}
+          <div className="flex items-center gap-4">
+            {/* Date Range Filter - Sleek Design */}
+            <div className="flex items-center gap-0 bg-gradient-to-r from-slate-50 to-white rounded-lg border shadow-sm overflow-hidden">
+              <div className="flex items-center gap-2 px-3 py-1.5 border-r bg-slate-50/80">
+                <Calendar className="h-4 w-4 text-primary" />
+                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Date Range</span>
+              </div>
+              <DatePicker
+                date={dateFrom}
+                onSelect={setDateFrom}
+                placeholder="From date"
+                className="border-0 rounded-none shadow-none"
+              />
+              <div className="px-2 py-1.5 text-xs text-slate-400 font-medium bg-slate-50/50">→</div>
+              <DatePicker
+                date={dateTo}
+                onSelect={setDateTo}
+                placeholder="To date"
+                className="border-0 rounded-none shadow-none"
+              />
+              {(dateFrom || dateTo) && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-none hover:bg-red-50 hover:text-red-500 transition-colors"
+                  onClick={() => {
+                    setDateFrom(undefined);
+                    setDateTo(undefined);
+                  }}
+                >
+                  <XCircle className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
 
-          <Select value={cityFilter} onValueChange={setCityFilter}>
-            <SelectTrigger className="w-32 h-8 text-xs">
-              <SelectValue placeholder="HQ City" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Cities</SelectItem>
-              {allCities.map(c => (
-                <SelectItem key={c.city_id} value={c.city_name}>{c.city_name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            {/* Results Count */}
+            <div className="text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">{displayData.length}</span> results
+            </div>
+
+            {/* Search - Right Side */}
+            <div className="relative flex-grow max-w-sm ml-auto">
+              <Search className="absolute left-3 top-2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search accounts..."
+                className="pl-9 h-8 text-xs shadow-sm bg-white rounded-lg"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
         </div>
 
         <DataTable
-          data={paginatedData}
+          data={displayData}
           columns={columns}
-          total={filteredData.length}
-          page={page}
-          limit={limit}
-          onPageChange={setPage}
-          onSearch={setSearch}
+          total={displayData.length}
+          page={1}
+          limit={displayData.length || 1}
+          onPageChange={() => { }}
           onSort={(key, dir) => { setSortKey(key); setSortDirection(dir); }}
           sortKey={sortKey}
           sortDirection={sortDirection}

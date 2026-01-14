@@ -311,7 +311,8 @@ export default function AccountDetails() {
         setExpandedDepts(newExpanded);
     };
 
-    const getInitials = (name: string) => {
+    const getInitials = (name: string | null | undefined) => {
+        if (!name) return '??';
         return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
     };
 
@@ -576,7 +577,7 @@ export default function AccountDetails() {
                                                         {getInitials(contact.name)}
                                                     </div>
                                                     <div>
-                                                        <p className="font-medium">{contact.name}</p>
+                                                        <p className="font-medium">{contact.name || contact.phone || 'Unknown'}</p>
                                                         <p className="text-xs text-muted-foreground">{contact.role || 'Contact'}</p>
                                                     </div>
                                                 </div>

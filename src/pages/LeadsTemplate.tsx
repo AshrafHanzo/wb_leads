@@ -13,17 +13,23 @@ import {
     RotateCcw,
     CheckCircle2,
     Ban,
-    History
+    History,
+    Upload,
+    FileSpreadsheet,
+    AlertCircle,
+    Calendar
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataTable, Column } from '@/components/common/DataTable';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { CompactModal } from '@/components/common/CompactModal';
+import { DatePicker } from '@/components/ui/date-picker';
 import { CallLogDrawer } from '@/components/leads/CallLogDrawer';
 import { CallHistoryDrawer } from '@/components/leads/CallHistoryDrawer';
 import { MeetingLogDrawer } from '@/components/leads/MeetingLogDrawer';
 import { MeetingHistoryDrawer } from '@/components/leads/MeetingHistoryDrawer';
 import { StatsCards } from '@/components/leads/StatsCards';
+import { FollowupsCard } from '@/components/leads/FollowupsCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -72,8 +78,98 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
+    DialogDescription,
     DialogFooter,
 } from "@/components/ui/dialog";
+
+const callOutcomes = [
+    'Called - No Answer',
+    'Called - Not Interested',
+    'Called - Interested',
+    'Called - Wrong Number',
+    'Called - Meeting Scheduled'
+];
+
+// CSV Parser Helper - handles multi-line quoted values, escaped quotes, etc.
+const parseCSV = (text: string): any[] => {
+    const rows: string[][] = [];
+    let currentRow: string[] = [];
+    let currentValue = '';
+    let inQuotes = false;
+
+    // Process character by character to handle all edge cases
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        const nextChar = text[i + 1];
+
+        if (inQuotes) {
+            if (char === '"') {
+                if (nextChar === '"') {
+                    // Escaped quote ("") - add single quote and skip next
+                    currentValue += '"';
+                    i++;
+                } else {
+                    // End of quoted field
+                    inQuotes = false;
+                }
+            } else {
+                currentValue += char;
+            }
+        } else {
+            if (char === '"') {
+                inQuotes = true;
+            } else if (char === ',') {
+                currentRow.push(currentValue.trim());
+                currentValue = '';
+            } else if (char === '\r' && nextChar === '\n') {
+                currentRow.push(currentValue.trim());
+                rows.push(currentRow);
+                currentRow = [];
+                currentValue = '';
+                i++; // Skip \n
+            } else if (char === '\n') {
+                currentRow.push(currentValue.trim());
+                rows.push(currentRow);
+                currentRow = [];
+                currentValue = '';
+            } else {
+                currentValue += char;
+            }
+        }
+    }
+
+    // Don't forget the last value/row
+    if (currentValue || currentRow.length > 0) {
+        currentRow.push(currentValue.trim());
+        rows.push(currentRow);
+    }
+
+    if (rows.length === 0) return [];
+
+    // First row is headers - trim and clean them
+    const headers = rows[0].map(h => h.trim().replace(/^\"|\"$/g, ''));
+
+    // Convert remaining rows to objects
+    const result: any[] = [];
+    for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        // Skip empty rows
+        if (row.length === 0 || (row.length === 1 && !row[0])) continue;
+
+        const obj: any = {};
+        headers.forEach((header, index) => {
+            if (header && index < row.length) {
+                obj[header] = row[index];
+            }
+        });
+
+        if (Object.keys(obj).length > 0) {
+            result.push(obj);
+        }
+    }
+
+    return result;
+};
 
 // Lead form data type that includes account fields
 type LeadFormData = Partial<Lead> & {
@@ -87,6 +183,7 @@ type LeadFormData = Partial<Lead> & {
     contact_phone?: string;
     contact_email?: string;
     company_phone?: string;
+    call_status?: string;
 };
 
 interface LeadsTemplateProps {
@@ -164,6 +261,9 @@ export function LeadsTemplate({
     const [cityFilter, setCityFilter] = useState<string>('all');
     const [productFilter, setProductFilter] = useState<string>('all');
     const [outcomeFilter, setOutcomeFilter] = useState<string>('all');
+    const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
+    const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+    const [highlightedLeadId, setHighlightedLeadId] = useState<number | null>(null);
     const [callLogDrawerOpen, setCallLogDrawerOpen] = useState(false);
     const [callHistoryDrawerOpen, setCallHistoryDrawerOpen] = useState(false);
     const [meetingLogDrawerOpen, setMeetingLogDrawerOpen] = useState(false);
@@ -176,6 +276,14 @@ export function LeadsTemplate({
         account_name?: string;
         company_website?: string;
     }>({});
+    const [importDialogOpen, setImportDialogOpen] = useState(false);
+    const [importing, setImporting] = useState(false);
+    const [importResults, setImportResults] = useState<{
+        success: number;
+        skipped: number;
+        failed: number;
+        errors: any[];
+    } | null>(null);
 
     // Master data state
     const [industries, setIndustries] = useState<any[]>(mockIndustryMaster);
@@ -322,15 +430,29 @@ export function LeadsTemplate({
             result = result.filter((lead) => lead.last_call_outcome === outcomeFilter);
         }
 
+        // 10. Date filter
+        if (dateFrom) {
+            const fromDate = new Date(dateFrom);
+            fromDate.setHours(0, 0, 0, 0);
+            result = result.filter((lead) => {
+                const leadDate = new Date(lead.lead_date);
+                return leadDate >= fromDate;
+            });
+        }
+        if (dateTo) {
+            const toDate = new Date(dateTo);
+            toDate.setHours(23, 59, 59, 999);
+            result = result.filter((lead) => {
+                const leadDate = new Date(lead.lead_date);
+                return leadDate <= toDate;
+            });
+        }
+
         return result;
-    }, [leads, search, stageFilter, sourceFilter, industryFilter, lobFilter, cityFilter, productFilter, outcomeFilter, allowedStageIds]);
+    }, [leads, search, stageFilter, sourceFilter, industryFilter, lobFilter, cityFilter, productFilter, outcomeFilter, dateFrom, dateTo, allowedStageIds]);
 
-    const paginatedData = useMemo(() => {
-        const startIndex = (page - 1) * limit;
-        return filteredData.slice(startIndex, startIndex + limit);
-    }, [filteredData, page]);
-
-    const totalPages = Math.ceil(filteredData.length / limit);
+    // Show all data without pagination
+    const displayData = filteredData;
 
     const columns: Column<LeadListItem>[] = [
         {
@@ -692,6 +814,7 @@ export function LeadsTemplate({
                 contact_phone: '',
                 contact_email: '',
                 company_phone: '',
+                call_status: '',
                 lead_source: leadSources[0]?.source_name || 'Website',
                 lead_generated_by: currentUser?.user_id || users[0]?.user_id || 1,
                 stage_id: stages[0]?.stage_id || 1,
@@ -796,6 +919,56 @@ export function LeadsTemplate({
         setEditModalOpen(false);
     };
 
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setImporting(true);
+        setImportResults(null);
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                const text = event.target?.result as string;
+                const parsedData = parseCSV(text);
+
+                if (parsedData.length === 0) {
+                    toast({
+                        title: 'Empty File',
+                        description: 'No data found in the selected CSV file.',
+                        variant: 'destructive'
+                    });
+                    setImporting(false);
+                    return;
+                }
+
+                // Send to backend
+                const result = await api.importLeads(parsedData);
+                setImportResults(result);
+
+                if (result.success > 0) {
+                    toast({
+                        title: 'Import Successful',
+                        description: `Imported ${result.success} leads. Skipped ${result.skipped}.`
+                    });
+                    fetchLeads(); // Refresh list
+                }
+
+                // Don't close immediately so user can see results
+            } catch (error: any) {
+                console.error('Import error:', error);
+                console.error('Error details:', error?.message, error?.response?.data);
+                toast({
+                    title: 'Import Failed',
+                    description: error?.message || 'Failed to process the file.',
+                    variant: 'destructive'
+                });
+            } finally {
+                setImporting(false);
+            }
+        };
+        reader.readAsText(file);
+    };
 
     const handleConfirmDelete = async () => {
         if (selectedLead) {
@@ -850,19 +1023,34 @@ export function LeadsTemplate({
                         <p className="text-sm text-muted-foreground">{description}</p>
                     </div>
                     {allowedStageIds.includes(1) && !hideGeneratedBy && (
-                        <Button onClick={() => openModal()} size="sm" className="gap-2">
-                            <Plus className="h-4 w-4" /> Add Lead
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            <Button onClick={() => setImportDialogOpen(true)} variant="outline" size="sm" className="gap-2">
+                                <Upload className="h-4 w-4" /> Import (CSV)
+                            </Button>
+                            <Button onClick={() => openModal()} size="sm" className="gap-2">
+                                <Plus className="h-4 w-4" /> Add Lead
+                            </Button>
+                        </div>
                     )}
                 </div>
 
                 <StatsCards stats={stats} loading={statsLoading} showCallStats={showCallStats} />
 
-                <div className="flex flex-col gap-4 bg-muted/20 p-4 rounded-xl border border-primary/5 mb-6">
-                    <div className="flex flex-wrap gap-2">
+                {showCallStats && (
+                    <FollowupsCard
+                        onLeadClick={(leadId, accountId) => {
+                            // Open account details page in new tab
+                            window.open(`/accounts/${accountId}`, '_blank');
+                        }}
+                    />
+                )}
+
+                <div className="flex flex-col gap-3 bg-muted/20 p-4 rounded-xl border border-primary/5 mb-6">
+                    {/* Row 1: Dropdown Filters */}
+                    <div className="flex flex-wrap items-center gap-2">
                         {!hideStageFilter && (
                             <Select value={stageFilter} onValueChange={setStageFilter}>
-                                <SelectTrigger className="h-8 w-[150px] text-xs">
+                                <SelectTrigger className="h-8 w-[130px] text-xs bg-white">
                                     <SelectValue placeholder="All Stages" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -880,7 +1068,7 @@ export function LeadsTemplate({
 
                         {!hideSourceFilter && (
                             <Select value={sourceFilter} onValueChange={setSourceFilter}>
-                                <SelectTrigger className="h-8 w-[150px] text-xs">
+                                <SelectTrigger className="h-8 w-[130px] text-xs bg-white">
                                     <SelectValue placeholder="All Sources" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -896,7 +1084,7 @@ export function LeadsTemplate({
 
                         {showIndustryFilter && (
                             <Select value={industryFilter} onValueChange={setIndustryFilter}>
-                                <SelectTrigger className="h-8 w-[150px] text-xs">
+                                <SelectTrigger className="h-8 w-[130px] text-xs bg-white">
                                     <SelectValue placeholder="All Industries" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -912,7 +1100,7 @@ export function LeadsTemplate({
 
                         {showLOBFilter && (
                             <Select value={lobFilter} onValueChange={setLobFilter}>
-                                <SelectTrigger className="h-8 w-[150px] text-xs">
+                                <SelectTrigger className="h-8 w-[120px] text-xs bg-white">
                                     <SelectValue placeholder="All LOBs" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -928,7 +1116,7 @@ export function LeadsTemplate({
 
                         {showCityFilter && (
                             <Select value={cityFilter} onValueChange={setCityFilter}>
-                                <SelectTrigger className="h-8 w-[150px] text-xs">
+                                <SelectTrigger className="h-8 w-[120px] text-xs bg-white">
                                     <SelectValue placeholder="All Cities" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -944,7 +1132,7 @@ export function LeadsTemplate({
 
                         {showProductFilter && (
                             <Select value={productFilter} onValueChange={setProductFilter}>
-                                <SelectTrigger className="h-8 w-[150px] text-xs">
+                                <SelectTrigger className="h-8 w-[130px] text-xs bg-white">
                                     <SelectValue placeholder="All Products" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -960,7 +1148,7 @@ export function LeadsTemplate({
 
                         {showOutcomeFilter && (
                             <Select value={outcomeFilter} onValueChange={setOutcomeFilter}>
-                                <SelectTrigger className="h-8 w-[160px] text-xs">
+                                <SelectTrigger className="h-8 w-[140px] text-xs bg-white">
                                     <SelectValue placeholder="All Outcomes" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -973,12 +1161,55 @@ export function LeadsTemplate({
                                 </SelectContent>
                             </Select>
                         )}
+                    </div>
 
+                    {/* Row 2: Date Filter + Search - Compact & Stunning */}
+                    <div className="flex items-center gap-4">
+                        {/* Date Range Filter - Sleek Design */}
+                        <div className="flex items-center gap-0 bg-gradient-to-r from-slate-50 to-white rounded-lg border shadow-sm overflow-hidden">
+                            <div className="flex items-center gap-2 px-3 py-1.5 border-r bg-slate-50/80">
+                                <Calendar className="h-4 w-4 text-primary" />
+                                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Date Range</span>
+                            </div>
+                            <DatePicker
+                                date={dateFrom}
+                                onSelect={setDateFrom}
+                                placeholder="From date"
+                                className="border-0 rounded-none shadow-none"
+                            />
+                            <div className="px-2 py-1.5 text-xs text-slate-400 font-medium bg-slate-50/50">→</div>
+                            <DatePicker
+                                date={dateTo}
+                                onSelect={setDateTo}
+                                placeholder="To date"
+                                className="border-0 rounded-none shadow-none"
+                            />
+                            {(dateFrom || dateTo) && (
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 rounded-none hover:bg-red-50 hover:text-red-500 transition-colors"
+                                    onClick={() => {
+                                        setDateFrom(undefined);
+                                        setDateTo(undefined);
+                                    }}
+                                >
+                                    <XCircle className="h-4 w-4" />
+                                </Button>
+                            )}
+                        </div>
+
+                        {/* Results Count */}
+                        <div className="text-xs text-muted-foreground">
+                            <span className="font-semibold text-foreground">{displayData.length}</span> results
+                        </div>
+
+                        {/* Search - Right Side */}
                         <div className="relative flex-grow max-w-sm ml-auto">
-                            <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+                            <Search className="absolute left-3 top-2 h-4 w-4 text-muted-foreground" />
                             <Input
                                 placeholder="Search leads, accounts..."
-                                className="pl-9 h-8 text-xs shadow-sm bg-white"
+                                className="pl-9 h-8 text-xs shadow-sm bg-white rounded-lg"
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                             />
@@ -988,11 +1219,11 @@ export function LeadsTemplate({
 
                 <DataTable
                     columns={columns}
-                    data={paginatedData}
-                    page={page}
-                    total={filteredData.length}
-                    limit={limit}
-                    onPageChange={setPage}
+                    data={displayData}
+                    page={1}
+                    total={displayData.length}
+                    limit={displayData.length || 1}
+                    onPageChange={() => { }}
                 />
 
                 {/* Edit Modal */}
@@ -1163,6 +1394,15 @@ export function LeadsTemplate({
                                                 placeholder="Company Landline"
                                             />
                                         </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="call_status">Call Status</Label>
+                                            <Input
+                                                id="call_status"
+                                                value={formData.call_status || ''}
+                                                onChange={(e) => setFormData({ ...formData, call_status: e.target.value })}
+                                                placeholder="Enter call status"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1294,6 +1534,73 @@ export function LeadsTemplate({
                         </AlertDialogFooter>
                     </AlertDialogContent>
                 </AlertDialog>
+
+                {/* Import Dialog */}
+                <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+                    <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>Import Leads from CSV</DialogTitle>
+                            <DialogDescription>
+                                Upload a CSV file exported from the spreadsheet.
+                                Duplicates based on Account Name will be skipped.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="space-y-4 py-4">
+                            <div className="grid w-full items-center gap-1.5">
+                                <Label htmlFor="csv_file">CSV File</Label>
+                                <Input
+                                    id="csv_file"
+                                    type="file"
+                                    accept=".csv"
+                                    onChange={handleFileUpload}
+                                    disabled={importing}
+                                />
+                            </div>
+
+                            {importing && (
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
+                                    <Upload className="h-4 w-4" />
+                                    Importing leads... please wait
+                                </div>
+                            )}
+
+                            {importResults && (
+                                <div className={`p-4 rounded-lg text-sm ${importResults.success > 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                                    <div className="flex items-center gap-2 mb-2 font-medium">
+                                        {importResults.success > 0 ? (
+                                            <CheckCircle2 className="h-4 w-4" />
+                                        ) : (
+                                            <Ban className="h-4 w-4" />
+                                        )}
+                                        Import Complete
+                                    </div>
+                                    <ul className="space-y-1 ml-6 list-disc">
+                                        <li>Added: {importResults.success}</li>
+                                        <li>Skipped (Duplicates): {importResults.skipped}</li>
+                                        <li>Failed: {importResults.failed}</li>
+                                    </ul>
+                                    {importResults.errors.length > 0 && (
+                                        <div className="mt-2 text-xs text-red-600 max-h-32 overflow-y-auto">
+                                            <strong>Errors:</strong>
+                                            {importResults.errors.map((err, idx) => (
+                                                <div key={idx} className="mt-1">
+                                                    {err.company}: {err.error}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        <DialogFooter className="sm:justify-end">
+                            <Button variant="secondary" onClick={() => setImportDialogOpen(false)}>
+                                Close
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
 
                 <CallLogDrawer
                     open={callLogDrawerOpen}

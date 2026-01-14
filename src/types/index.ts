@@ -136,6 +136,7 @@ export interface Lead {
   products_interested: string;
   product_mapped: string;
   remarks: string;
+  call_status?: string;
   created_date: string;
   updated_date: string;
 }
@@ -190,6 +191,7 @@ export interface LeadListItem {
   product_mapped?: string;
   contact_phone?: string;
   last_call_outcome?: string;
+  call_status?: string;
 }
 
 // Account Details - Related Entities

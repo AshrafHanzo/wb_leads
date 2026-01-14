@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Sheet,
     SheetContent,
@@ -10,12 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Phone, CheckCircle2 } from "lucide-react";
+import { Phone, CheckCircle2, History, Calendar, User, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { LeadListItem } from "@/types";
+import { LeadListItem, TelecallLog } from "@/types";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { formatDate } from "@/lib/formatters";
 
 interface CallLogDrawerProps {
     open: boolean;
@@ -29,8 +30,21 @@ const outcomes = [
     'Busy',
     'Call Back Later',
     'Interested',
-    'Not Interested'
+    'Not Interested',
+    'Wrong Number'
 ];
+
+const getOutcomeColor = (outcome: string) => {
+    switch (outcome) {
+        case 'Interested': return 'text-green-600 bg-green-50 border-green-200';
+        case 'Not Interested': return 'text-red-600 bg-red-50 border-red-200';
+        case 'Busy': return 'text-amber-600 bg-amber-50 border-amber-200';
+        case 'No Answer': return 'text-gray-600 bg-gray-50 border-gray-200';
+        case 'Call Back Later': return 'text-blue-600 bg-blue-50 border-blue-200';
+        case 'Wrong Number': return 'text-purple-600 bg-purple-50 border-purple-200';
+        default: return 'text-muted-foreground bg-muted border-border';
+    }
+};
 
 export function CallLogDrawer({ open, onOpenChange, lead, onSaveSuccess }: CallLogDrawerProps) {
     const { toast } = useToast();
@@ -40,6 +54,28 @@ export function CallLogDrawer({ open, onOpenChange, lead, onSaveSuccess }: CallL
     const [followupRequired, setFollowupRequired] = useState(false);
     const [followupDate, setFollowupDate] = useState('');
     const [loading, setLoading] = useState(false);
+    const [callHistory, setCallHistory] = useState<TelecallLog[]>([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
+
+    // Fetch call history when drawer opens
+    useEffect(() => {
+        if (open && lead) {
+            fetchCallHistory();
+        }
+    }, [open, lead]);
+
+    const fetchCallHistory = async () => {
+        if (!lead) return;
+        setHistoryLoading(true);
+        try {
+            const data = await api.getLeadCalls(lead.lead_id);
+            setCallHistory(data);
+        } catch (error) {
+            console.error('Failed to fetch call history:', error);
+        } finally {
+            setHistoryLoading(false);
+        }
+    };
 
     const handleSave = async () => {
         if (!lead || !currentUser || !outcome) return;
@@ -66,6 +102,9 @@ export function CallLogDrawer({ open, onOpenChange, lead, onSaveSuccess }: CallL
             setNotes('');
             setFollowupRequired(false);
             setFollowupDate('');
+
+            // Refresh call history
+            await fetchCallHistory();
 
             onSaveSuccess();
             onOpenChange(false);
@@ -175,6 +214,71 @@ export function CallLogDrawer({ open, onOpenChange, lead, onSaveSuccess }: CallL
                                     value={followupDate}
                                     onChange={(e) => setFollowupDate(e.target.value)}
                                 />
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Call History Section */}
+                    <div className="space-y-3 border-t pt-4">
+                        <div className="flex items-center gap-2">
+                            <History className="h-4 w-4 text-muted-foreground" />
+                            <Label className="text-sm font-semibold">Call History</Label>
+                        </div>
+
+                        {historyLoading ? (
+                            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                                <Clock className="h-6 w-6 animate-spin mb-2" />
+                                <p className="text-xs">Loading history...</p>
+                            </div>
+                        ) : callHistory.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground text-center bg-muted/30 rounded-lg">
+                                <History className="h-8 w-8 mb-2 opacity-20" />
+                                <p className="text-xs font-medium">No call logs yet</p>
+                                <p className="text-[10px] opacity-70">Call logs will appear here</p>
+                            </div>
+                        ) : (
+                            <div className="relative space-y-4 pl-4 border-l-2 border-muted ml-1 pb-2 max-h-[250px] overflow-y-auto">
+                                {callHistory.map((log) => (
+                                    <div key={log.call_id} className="relative">
+                                        {/* Timeline Dot */}
+                                        <div className="absolute -left-[21px] mt-1.5 h-3 w-3 rounded-full border-2 border-background bg-primary shadow-sm" />
+
+                                        <div className="space-y-1.5">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                                                    <Calendar className="h-3 w-3" />
+                                                    {formatDate(log.call_datetime)}
+                                                </div>
+                                                <div className={cn(
+                                                    "px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-tight border",
+                                                    getOutcomeColor(log.call_outcome)
+                                                )}>
+                                                    {log.call_outcome}
+                                                </div>
+                                            </div>
+
+                                            <div className="p-2.5 rounded-lg border bg-card/50 shadow-sm space-y-1.5">
+                                                <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                                                    <User className="h-3 w-3 text-muted-foreground" />
+                                                    {log.telecaller_name}
+                                                </div>
+
+                                                {log.notes && (
+                                                    <p className="text-[11px] text-muted-foreground leading-relaxed italic">
+                                                        "{log.notes}"
+                                                    </p>
+                                                )}
+
+                                                {log.followup_datetime && (
+                                                    <div className="pt-1.5 mt-1.5 border-t flex items-center gap-1.5 text-[10px] font-medium text-blue-600">
+                                                        <Clock className="h-3 w-3" />
+                                                        Next Follow-up: {formatDate(log.followup_datetime)}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         )}
                     </div>
